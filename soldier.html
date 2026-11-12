@@ -209,9 +209,9 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
         <button class="rebuild" id="btnBuild" disabled>ПОСТРОИТЬ 3D МОДЕЛЬ</button>
       </div>
       <div class="row"><span class="lbl">Выдавливание</span><input type="range" id="rngDepth" min="60" max="300" step="10" value="160"><span class="val" id="valDepth">160 мм</span></div>
-      <div class="row"><span class="lbl">Ячейка</span><input type="range" id="rngCell" min="2" max="20" step="1" value="3"><span class="val" id="valCell">3 мм</span></div>
+      <div class="row"><span class="lbl">Ячейка</span><input type="range" id="rngCell" min="2" max="20" step="1" value="4"><span class="val" id="valCell">4 мм</span></div>
       <div class="row"><span class="lbl">Размер точки</span><input type="range" id="rngSize" min="50" max="200" step="5" value="110"><span class="val" id="valSize">110%</span></div>
-      <div class="count">ТОЧЕК: <b id="pointCount">—</b> · СЕТКА <b id="cellNow">3 ММ</b></div>
+      <div class="count">ТОЧЕК: <b id="pointCount">—</b> · СЕТКА <b id="cellNow">4 ММ</b></div>
       <p class="note"><b>Конвейер:</b> 1) поле пустое → 2) загрузите референсы в 4 слота (фронт / лево / право / зад) → 3) пиксели → векторы → выдавливание по яркости (ярче = выступает, темнее = глубже) → 4) сращивание 4 видов в 3D-модель → 5) оживление (T-Pose / Idle / Walk / Run).</p>
     </div>
     <div class="sec">
@@ -721,7 +721,7 @@ async function analyzeView(v,progress=()=>{}){
   progress(1);
 }
 /* ---------- облака точек + плавная замена проходов ---------- */
-let cloud=null,fade=null,cellStep=0.003,sizeMult=1.10;
+let cloud=null,fade=null,cellStep=0.004,sizeMult=1.10;
 /* ---------- этап 2 · шейдерное слияние: сплэты → монолитная поверхность ---------- */
 const SPLAT_OVERLAP=2.2;
 function makeSplat(){
@@ -826,7 +826,7 @@ function disposeCloud(c){
   if(!c)return;
   for(const p of c.points){if(p.parent)p.parent.remove(p);p.geometry.dispose();}
   for(const m of c.meshes){if(m.parent)m.parent.remove(m);m.geometry.dispose();}
-  for(const w of c.wires){if(w.parent)w.parent.remove(w);}
+  for(const w of c.wires){if(w.parent)w.parent.remove(w);w.geometry.dispose();}
   c.mat.dispose();
   for(const m of c.meshMats)m.dispose();
   for(const m of c.wireMats)m.dispose();
@@ -900,6 +900,7 @@ async function buildCloud(step,onProg){
   const getBuf=k=>{let o2=byBone.get(k);if(!o2){o2={p:[],c:[],n:[]};byBone.set(k,o2);}return o2;};
   const rng=mulberry32(47);
   let total=0;
+  const seen=new Set(),qs=Math.max(step*0.6,0.002);
   /* оси вида: u → (ux,uz) — горизонталь экрана, глубина → (ax,az), w → y;
      каждый пиксель = одна точка, выдавленная по яркости вдоль оси вида */
   const AXES={front:{ux:1,uz:0,ax:0,az:1},back:{ux:-1,uz:0,ax:0,az:-1},left:{ux:0,uz:-1,ax:1,az:0},right:{ux:0,uz:1,ax:-1,az:0}};
@@ -923,6 +924,9 @@ async function buildCloud(step,onProg){
         const depth=cf*D;
         const uj=u+(rng()-0.5)*step*0.25,yj=y+(rng()-0.5)*step*0.25;
         const x=A.ux*uj+A.ax*depth,z=A.uz*uj+A.az*depth;
+        const key=((Math.round(x/qs)+2048)*4096+(Math.round(yj/qs)+2048))*4096+(Math.round(z/qs)+2048);
+        if(seen.has(key))continue;
+        seen.add(key);
         const nX=A.ux*nu+A.ax*na,nZ=A.uz*nu+A.az*na;
         const ndl=Math.max(0,nX*light.x+nw*light.y+nZ*light.z);
         const shade=0.42+0.58*ndl;
@@ -969,7 +973,8 @@ async function buildCloud(step,onProg){
   prog(0.68,'ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ…');
   const f=views.front.canvas?views.front:null,bv=views.back.canvas?views.back:null;
   const WW=(f?f.WW:(bv?bv.WW:2*D+0.2));
-  const colsX=Math.max(2,Math.round(WW/step)),colsY=Math.max(2,Math.round(REF_H/step));
+  const meshStep=Math.max(step,0.008);
+  const colsX=Math.max(2,Math.round(WW/meshStep)),colsY=Math.max(2,Math.round(REF_H/meshStep));
   const nValid=new Uint8Array(colsX*colsY),nBone=new Uint8Array(colsX*colsY);
   const nZf=new Float32Array(colsX*colsY),nZb=new Float32Array(colsX*colsY);
   const nCr=new Float32Array(colsX*colsY),nCg=new Float32Array(colsX*colsY),nCb=new Float32Array(colsX*colsY);
@@ -985,7 +990,7 @@ async function buildCloud(step,onProg){
   };
   for(let yi=0;yi<colsY;yi++)for(let xi=0;xi<colsX;xi++){
     const ci=yi*colsX+xi;
-    const x=(xi+0.5)*step-WW/2,y=(yi+0.5)*step;
+    const x=(xi+0.5)*meshStep-WW/2,y=(yi+0.5)*meshStep;
     let zf=NaN,zb=NaN,col=null;
     if(f){
       const i=pyOf(f,y)*f.W+pxOf(f,x,1);
@@ -1007,7 +1012,7 @@ async function buildCloud(step,onProg){
   const chunks=new Map();
   const getChunk=bn=>{
     let ch=chunks.get(bn);
-    if(!ch){ch={pos:[],col:[],idx:[],mapF:new Map(),mapB:new Map()};chunks.set(bn,ch);}
+    if(!ch){ch={pos:[],col:[],idx:[],edge:[],mapF:new Map(),mapB:new Map()};chunks.set(bn,ch);}
     return ch;
   };
   const loc3=(bn,x,y,z,out)=>{
@@ -1028,7 +1033,7 @@ async function buildCloud(step,onProg){
     }
     return k;
   };
-  const wxOf=gx=>(gx+0.5)*step-WW/2,wyOf=gy=>(gy+0.5)*step;
+  const wxOf=gx=>(gx+0.5)*meshStep-WW/2,wyOf=gy=>(gy+0.5)*meshStep;
   const vertF=(ch,mp,ni,bn)=>{
     const gx=ni%colsX,gy=(ni/colsX)|0;
     return addVert(ch,mp,ni,bn,wxOf(gx),wyOf(gy),nZf[ni],nCr[ni],nCg[ni],nCb[ni]);
@@ -1037,27 +1042,18 @@ async function buildCloud(step,onProg){
     const gx=ni%colsX,gy=(ni/colsX)|0;
     return addVert(ch,mp,ni,bn,wxOf(gx),wyOf(gy),nZb[ni],nCr[ni]*0.55,nCg[ni]*0.55,nCb[ni]*0.55);
   };
-  const triBones=(a,b,c)=>{
-    const set=new Set([boneNames[nBone[a]],boneNames[nBone[b]],boneNames[nBone[c]]]);
-    return[...set];
-  };
+  const triBones=a=>boneNames[nBone[a]];
   for(let gy=0;gy<colsY-1;gy++){
     for(let gx=0;gx<colsX-1;gx++){
       const a=gy*colsX+gx,b=a+1,c2=a+colsX+1,d2=a+colsX;
       if(!(nValid[a]&&nValid[b]&&nValid[c2]&&nValid[d2]))continue;
       for(const[t0,t1,t2]of[[a,b,c2],[a,c2,d2]]){
-        for(const bn of triBones(t0,t1,t2)){
-          const ch=getChunk(bn);
-          const i0=vertF(ch,ch.mapF,t0,bn),i1=vertF(ch,ch.mapF,t1,bn),i2=vertF(ch,ch.mapF,t2,bn);
-          ch.idx.push(i0,i1,i2);
-        }
+        const bn=triBones(t0),ch=getChunk(bn);
+        ch.idx.push(vertF(ch,ch.mapF,t0,bn),vertF(ch,ch.mapF,t1,bn),vertF(ch,ch.mapF,t2,bn));
       }
       for(const[t0,t1,t2]of[[a,c2,b],[a,d2,c2]]){
-        for(const bn of triBones(t0,t1,t2)){
-          const ch=getChunk(bn);
-          const i0=vertB(ch,ch.mapB,t0,bn),i1=vertB(ch,ch.mapB,t1,bn),i2=vertB(ch,ch.mapB,t2,bn);
-          ch.idx.push(i0,i1,i2);
-        }
+        const bn=triBones(t0),ch=getChunk(bn);
+        ch.idx.push(vertB(ch,ch.mapB,t0,bn),vertB(ch,ch.mapB,t1,bn),vertB(ch,ch.mapB,t2,bn));
       }
     }
     if((gy&31)===0){
@@ -1067,13 +1063,10 @@ async function buildCloud(step,onProg){
   }
   /* стены по границе силуэта — замыкание оболочек в монолит */
   const wall=(a,b)=>{
-    const set=new Set([boneNames[nBone[a]],boneNames[nBone[b]]]);
-    for(const bn of set){
-      const ch=getChunk(bn);
-      const f0=vertF(ch,ch.mapF,a,bn),f1=vertF(ch,ch.mapF,b,bn);
-      const b1=vertB(ch,ch.mapB,b,bn),b0=vertB(ch,ch.mapB,a,bn);
-      ch.idx.push(f0,f1,b1,f0,b1,b0);
-    }
+    const bn=boneNames[nBone[a]],ch=getChunk(bn);
+    const f0=vertF(ch,ch.mapF,a,bn),f1=vertF(ch,ch.mapF,b,bn);
+    const b1=vertB(ch,ch.mapB,b,bn),b0=vertB(ch,ch.mapB,a,bn);
+    ch.idx.push(f0,f1,b1,f0,b1,b0);
   };
   for(let gy=0;gy<colsY;gy++)for(let gx=0;gx<colsX-1;gx++){
     const a=gy*colsX+gx,b=a+1;
@@ -1091,6 +1084,21 @@ async function buildCloud(step,onProg){
     if(lft&&rgt)continue;
     wall(a,b);
   }
+  /* связи точек (соседи сетки) определяем один раз здесь — в кадре меняются только координаты */
+  for(const ch of chunks.values()){
+    for(let gy=0;gy<colsY;gy++)for(let gx=0;gx<colsX-1;gx++){
+      const a=gy*colsX+gx,b=a+1;
+      if(!(nValid[a]&&nValid[b])||nBone[a]!==nBone[b])continue;
+      if(ch.mapF.has(a)&&ch.mapF.has(b))ch.edge.push(ch.mapF.get(a),ch.mapF.get(b));
+      if(ch.mapB.has(a)&&ch.mapB.has(b))ch.edge.push(ch.mapB.get(a),ch.mapB.get(b));
+    }
+    for(let gy=0;gy<colsY-1;gy++)for(let gx=0;gx<colsX;gx++){
+      const a=gy*colsX+gx,b=a+colsX;
+      if(!(nValid[a]&&nValid[b])||nBone[a]!==nBone[b])continue;
+      if(ch.mapF.has(a)&&ch.mapF.has(b))ch.edge.push(ch.mapF.get(a),ch.mapF.get(b));
+      if(ch.mapB.has(a)&&ch.mapB.has(b))ch.edge.push(ch.mapB.get(a),ch.mapB.get(b));
+    }
+  }
   /* сборка мешей по костям */
   prog(0.96,'СБОРКА МЕША…');await raf();
   const meshes=[],wires=[],meshMats=[],wireMats=[];
@@ -1105,9 +1113,15 @@ async function buildCloud(step,onProg){
     const mm=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,transparent:true,opacity:0});
     const ms=new THREE.Mesh(g,mm);ms.name=bn+'_mesh';ms.visible=false;
     rig[bn].node.add(ms);meshes.push(ms);meshMats.push(mm);
-    const wm=new THREE.MeshBasicMaterial({wireframe:true,color:0xe09a55,transparent:true,opacity:0.22,depthWrite:false});
-    const wire=new THREE.Mesh(g,wm);wire.name=bn+'_wire';wire.visible=false;
-    rig[bn].node.add(wire);wires.push(wire);wireMats.push(wm);
+    if(ch.edge.length>=2){
+      const eg=new THREE.BufferGeometry();
+      eg.setAttribute('position',g.attributes.position);
+      eg.setIndex(ch.edge);
+      eg.computeBoundingSphere();
+      const wm=new THREE.LineBasicMaterial({color:0xe09a55,transparent:true,opacity:0.35,depthWrite:false});
+      const wire=new THREE.LineSegments(eg,wm);wire.name=bn+'_wire';wire.visible=false;
+      rig[bn].node.add(wire);wires.push(wire);wireMats.push(wm);
+    }
   }
   prog(1,'ГОТОВО');
   return {points,meshes,wires,meshMats,wireMats,mat,count:total,cell:step};
