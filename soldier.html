@@ -55,6 +55,8 @@ button:focus-visible,input:focus-visible{outline:1px solid var(--gas);outline-of
 .sec-h::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
 
 .modes{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.modes.two{grid-template-columns:repeat(2,1fr)}
+.modes.three{grid-template-columns:repeat(3,1fr)}
 .mode{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 7px;border:1px solid var(--line2);border-radius:4px;background:rgba(200,194,182,.03);transition:.15s}
 .mode b{font-family:var(--disp);font-weight:500;font-size:10.5px;letter-spacing:.08em}
 .mode small{font-size:8px;color:var(--muted)}
@@ -84,6 +86,12 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
 .rebuild{width:100%;margin-top:9px;padding:8px;border:1px solid rgba(111,135,184,.5);border-radius:4px;background:rgba(111,135,184,.1);
   font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;color:var(--bone);transition:.15s}
 .rebuild:hover{background:rgba(111,135,184,.2);transform:translateY(-1px)}
+.refrow{display:flex;gap:10px;margin-top:9px}
+#refThumb{width:74px;height:148px;flex:none;border:1px solid var(--line2);border-radius:4px;background:#0d0e11}
+.refbtns{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.refbtns .rebuild{margin-top:0;padding:7px}
+.refname{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.refstats{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;color:var(--muted)}
 
 .exp{width:100%;display:flex;align-items:center;gap:10px;margin-top:8px;padding:10px 12px;border-radius:5px;border:1px solid var(--line);background:rgba(200,194,182,.04);transition:.15s;text-align:left;position:relative}
 .exp svg{width:18px;height:18px;flex:none;stroke:var(--bone);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -152,7 +160,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
 <header id="topbar">
   <div>
     <h1>GMS-0047 <em>//</em> POINT-VOXEL SOLDIER</h1>
-    <p>ПОВЕРХНОСТНЫЕ ТОЧКИ · ПОСЛЕДОВАТЕЛЬНАЯ СБОРКА ×3</p>
+    <p>ВЕКТОРНЫЙ 3D-СКАНЕР · ПЛОТНАЯ СЕТКА · КАРТА РЕЛЬЕФА</p>
   </div>
   <div class="sp"></div>
   <div class="chip"><i></i>RIG ONLINE</div>
@@ -185,12 +193,22 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
     </div>
 
     <div class="sec">
-      <div class="sec-h"><i>02</i>ТОЧКИ</div>
-      <div class="row"><span class="lbl">Ячейка</span><input type="range" id="rngCell" min="5" max="20" step="1" value="7"><span class="val" id="valCell">7 мм</span></div>
+      <div class="sec-h"><i>02</i>РЕФЕРЕНС И СЕТКА</div>
+      <div class="refrow">
+        <canvas id="refThumb" width="148" height="296"></canvas>
+        <div class="refbtns">
+          <button class="rebuild" id="btnRefLoad">ЗАГРУЗИТЬ РЕФЕРЕНС</button>
+          <button class="rebuild" id="btnRefReset">ПРОЦЕДУРНЫЙ РЕФЕРЕНС</button>
+          <input type="file" id="fileRef" accept="image/*" hidden>
+          <div class="refname" id="refName">ВСТРОЕННЫЙ · ПРОЦЕДУРНЫЙ</div>
+          <div class="refstats" id="refStats">КОНТУРОВ: — · УЗЛОВ: —</div>
+        </div>
+      </div>
+      <div class="row"><span class="lbl">Ячейка</span><input type="range" id="rngCell" min="2" max="20" step="1" value="3"><span class="val" id="valCell">3 мм</span></div>
       <div class="row"><span class="lbl">Размер точки</span><input type="range" id="rngSize" min="50" max="200" step="5" value="110"><span class="val" id="valSize">110%</span></div>
-      <div class="count">ТОЧЕК: <b id="pointCount">—</b> · <b>≈ ×3</b> К ВЕРСИИ 12 ММ</div>
-      <button class="rebuild" id="btnSequence">ПЕРЕСОБРАТЬ · 4 ПРОХОДА ПО РЕФЕРЕНСУ</button>
-      <p class="note"><b>Последовательность:</b> Front → Left → Back → Right. Сначала грубый каркас, затем форма и объём, в финале — плотная скруглённая оболочка.</p>
+      <div class="count">ТОЧЕК: <b id="pointCount">—</b> · СЕТКА <b id="cellNow">3 ММ</b></div>
+      <button class="rebuild" id="btnSequence">ПЕРЕСОБРАТЬ · 4 ПРОХОДА СКАНЕРА</button>
+      <p class="note"><b>Этап 1:</b> векторное сканирование референса — плотная сетка 2–3 мм, контуры деталей по градиентам яркости/цвета, Z-рельеф через distance transform, точный цвет и нормаль каждого узла.</p>
     </div>
 
     <div class="sec">
@@ -206,13 +224,24 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
       <p class="note">GLB: иерархия костей + 3 клипа (30 fps). Unity: glTFast / UniGLTF.</p>
     </div>
 
+    <div class="sec">
+      <div class="sec-h"><i>04</i>РЕНДЕР</div>
+      <div class="modes three">
+        <button class="mode rmode active" data-rmode="mesh"><b>СЕТКА</b><small>плоскости</small></button>
+        <button class="mode rmode" data-rmode="surface"><b>СЛИЯНИЕ</b><small>монолит</small></button>
+        <button class="mode rmode" data-rmode="points"><b>ТОЧКИ</b><small>облако</small></button>
+      </div>
+      <button class="rebuild" id="btnWire">ЛИНИИ СЕТКИ: ВКЛ</button>
+      <p class="note"><b>Сетка:</b> соседние узлы соединяются линиями, каждые 3 точки образуют треугольную плоскость — передняя и задняя оболочки плюс стены по границе силуэта = монолитный меш. Слияние и облако точек доступны как режимы.</p>
+    </div>
+
   </div>
 </aside>
 
 <div id="build">
   <div class="b-top"><span id="buildLabel">ПРОХОД 1/4 · FRONT</span><span id="buildPct">0%</span></div>
   <div class="b-track"><div id="buildBar"></div></div>
-  <div class="b-sub" id="buildSub">20 мм · грубый каркас</div>
+  <div class="b-sub" id="buildSub">12 мм · грубый векторный каркас</div>
 </div>
 
 <div id="telemetry">
@@ -287,6 +316,10 @@ function initThree(){
   controls.addEventListener('start',()=>{camTween=null;$('hint').classList.add('gone');});
   grid=new THREE.GridHelper(8,80,0x2a2d33,0x1a1c20);
   grid.material.transparent=true;grid.material.opacity=0.4;scene.add(grid);
+  scene.add(new THREE.AmbientLight(0xffffff,0.55));
+  const keyL=new THREE.DirectionalLight(0xfff1dd,1.6);keyL.position.set(1.6,2.6,2.6);scene.add(keyL);
+  const fillL=new THREE.DirectionalLight(0xbfd0ff,0.55);fillL.position.set(-2.2,1.4,1.8);scene.add(fillL);
+  const rimL=new THREE.DirectionalLight(0x8fa8d8,0.9);rimL.position.set(0,2.2,-3);scene.add(rimL);
   pointMat=new THREE.PointsMaterial({size:0.008,map:dotTexture(),vertexColors:true,alphaTest:0.35,sizeAttenuation:true,transparent:true,opacity:1,depthWrite:true});
 }
 
@@ -294,6 +327,7 @@ function initThree(){
 const C={wool:0x3d403d,woolDark:0x333633,cloak:0x323532,rust:0x4a3525,armor:0x543828,leather:0x3a2a1c,
   boot:0x261a12,rubber:0x222426,steel:0x565b62,lens:0x8fb0d8,wrap:0xb8b09c,doll:0xc8c2b6,glove:0x2b2622,black:0x0a0a0b};
 const MAT={};for(const k in C)MAT[k]=new THREE.MeshBasicMaterial({color:C[k]});
+const MAT_KEYS=new Map();for(const k in MAT)MAT_KEYS.set(MAT[k],k);
 
 /* ---------- риг ---------- */
 const RIG_DEF=[
@@ -314,7 +348,7 @@ function node(name,parent,x,y,z){
 }
 function mesh(geo,mat,parent,x=0,y=0,z=0){
   const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);
-  m.visible=false;m.userData.source=true;   // скрытый каркас — только источник поверхности
+  m.visible=false;m.userData.source=true;m.userData.mkey=MAT_KEYS.get(mat)||'';
   parent.add(m);return m;
 }
 function xform(geo,px,py,pz,rx=0,ry=0,rz=0,sx=1,sy=1,sz=1){
@@ -477,61 +511,443 @@ function buildCharacter(){
   scene.add(charRoot);
 }
 
-/* ---------- сэмплирование поверхности → точки ---------- */
-const _va=new THREE.Vector3(),_vb=new THREE.Vector3(),_vc=new THREE.Vector3(),_ab=new THREE.Vector3(),_ac=new THREE.Vector3();
-function sampleMesh(m,matrix,step,cells,rng){
-  const g=m.geometry,pos=g.attributes.position,idx=g.index;
-  const triN=idx?idx.count/3:pos.count/3;
-  const cum=new Float32Array(triN);let total=0;
-  const ia=idx?idx.array:null;
-  for(let t=0;t<triN;t++){
-    const a=ia?ia[t*3]:t*3,b=ia?ia[t*3+1]:t*3+1,c=ia?ia[t*3+2]:t*3+2;
-    _va.fromBufferAttribute(pos,a);_vb.fromBufferAttribute(pos,b);_vc.fromBufferAttribute(pos,c);
-    _ab.subVectors(_vb,_va);_ac.subVectors(_vc,_va);
-    total+=_ab.cross(_ac).length()*0.5;cum[t]=total;
+/* ---------- ЭТАП 1 · векторный 3D-сканер референса ---------- */
+const REF_H=1.92,REF_PROC_W=1.9,REF_PX_W=768,REF_PX_H=776;
+const REGION={HEAD:1,TORSO:2,CLOAK:3,ARM_L:4,ARM_R:5,LEG_L:6,LEG_R:7,FEET:8};
+const REGION_SCALE={1:0.115,2:0.145,3:0.175,4:0.065,5:0.065,6:0.095,7:0.095,8:0.075};
+const REGION_BONES={
+  1:['Head','Neck'],
+  2:['Chest','Spine'],
+  3:['Cloak','Chest','Spine'],
+  4:['ShoulderL','UpperArmL','ForeArmL','HandL','FingersL'],
+  5:['ShoulderR','UpperArmR','ForeArmR','HandR','FingersR'],
+  6:['ThighL','CalfL','FootL'],
+  7:['ThighR','CalfR','FootR'],
+  8:['FootL','FootR']
+};
+const REF={canvas:null,name:'ПРОЦЕДУРНЫЙ',W:0,H:0,worldW:REF_PROC_W,data:null,mask:null,edge:null,dist:null,depth:null,
+  nx:null,ny:null,nz:null,region:null,contours:[],detailContours:[],ready:false,metersPerPx:0};
+
+let LAMBERT=null;
+function ensureLambert(){
+  if(LAMBERT)return;
+  LAMBERT={};
+  for(const k in C)LAMBERT[k]=new THREE.MeshLambertMaterial({color:C[k]});
+}
+
+/* встроенный процедурный референс: фронтальный рендер скрытого каркаса в canvas */
+function renderProceduralReference(){
+  ensureLambert();
+  const W=REF_PX_W,H=REF_PX_H;
+  const rt=new THREE.WebGLRenderTarget(W,H);
+  const oldFog=scene.fog,oldBg=scene.background;
+  scene.fog=null;scene.background=new THREE.Color(0x0d0e11);
+  const gridVis=grid.visible;grid.visible=false;
+  const pv=[];
+  if(cloud)for(const p of cloud.points){pv.push([p,p.visible]);p.visible=false;}
+  const swaps=[];
+  charRoot.traverse(o=>{if(o.isMesh&&o.userData.source){swaps.push([o,o.material,o.visible]);o.material=LAMBERT[o.userData.mkey]||o.material;o.visible=true;}});
+  applyPose(ZERO);charRoot.updateMatrixWorld(true);
+  const cam=new THREE.OrthographicCamera(-REF_PROC_W/2,REF_PROC_W/2,REF_H/2,-REF_H/2,0.1,10);
+  cam.position.set(0,REF_H/2,3);cam.lookAt(0,REF_H/2,0);
+  renderer.setRenderTarget(rt);
+  renderer.render(scene,cam);
+  renderer.readRenderTargetPixels(rt,0,0,W,H,__REFBUF||( __REFBUF=new Uint8Array(W*H*4) ));
+  renderer.setRenderTarget(null);
+  for(const[o,m,v]of swaps){o.material=m;o.visible=v;}
+  for(const[p,v]of pv)p.visible=v;
+  grid.visible=gridVis;scene.fog=oldFog;scene.background=oldBg;
+  rt.dispose();
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');const img=ctx.createImageData(W,H);
+  for(let y=0;y<H;y++)img.data.set(__REFBUF.subarray((H-1-y)*W*4,(H-y)*W*4),y*W*4);
+  ctx.putImageData(img,0,0);
+  return cv;
+}
+let __REFBUF=null;
+
+function setReferenceCanvas(cv,name){
+  REF.canvas=cv;REF.name=name;REF.ready=false;
+  REF.worldW=REF_H*cv.width/cv.height;
+  $('refName').textContent=name.slice(0,30).toUpperCase();
+}
+
+function loadReferenceFile(file){
+  if(state.busy||state.building)return;
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  img.onload=async()=>{
+    URL.revokeObjectURL(url);
+    const s=Math.min(REF_PX_W/img.width,REF_PX_H/img.height);
+    const cv=document.createElement('canvas');
+    cv.width=Math.max(2,Math.round(img.width*s));
+    cv.height=Math.max(2,Math.round(img.height*s));
+    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+    setReferenceCanvas(cv,file.name);
+    await rebuildNow();
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);toast('НЕ УДАЛОСЬ ПРОЧИТАТЬ ИЗОБРАЖЕНИЕ','danger');};
+  img.src=url;
+}
+
+/* анализ референса: маска → градиенты → контуры → distance transform → рельеф → нормали */
+async function analyzeReference(progress=()=>{}){
+  const cv=REF.canvas;
+  if(!cv)throw new Error('Референс не задан');
+  const W=cv.width,H=cv.height,N=W*H;
+  REF.W=W;REF.H=H;
+  const ctx=cv.getContext('2d',{willReadFrequently:true});
+  const img=ctx.getImageData(0,0,W,H);
+  const data=REF.data=img.data;
+  await raf();progress(0.05);
+
+  /* 1 · маска силуэта: альфа-канал либо отсечение фона по медиане рамки */
+  const mask=REF.mask=new Uint8Array(N);
+  let hasAlpha=false;
+  for(let i=3;i<data.length;i+=4){if(data[i]<250){hasAlpha=true;break;}}
+  if(hasAlpha){
+    for(let i=0;i<N;i++)mask[i]=data[i*4+3]>40?1:0;
+  }else{
+    const rs=[],gs=[],bs=[];
+    for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2){
+      if(x>2&&y>2&&x<W-3&&y<H-3)continue;
+      const o=(y*W+x)*4;rs.push(data[o]);gs.push(data[o+1]);bs.push(data[o+2]);
+    }
+    const med=a=>{a.sort((p,q)=>p-q);return a.length?a[a.length>>1]:0;};
+    const br=med(rs),bg=med(gs),bb=med(bs);
+    for(let i=0;i<N;i++){
+      const dr=data[i*4]-br,dg=data[i*4+1]-bg,db=data[i*4+2]-bb;
+      mask[i]=(dr*dr+dg*dg+db*db>500)?1:0;
+    }
   }
-  if(total<=0)return;
-  const col=m.material.color;
-  const n=Math.max(24,Math.ceil(total/(step*step)*10));
-  for(let i=0;i<n;i++){
-    const r=rng()*total;
-    let lo=0,hi=triN-1;
-    while(lo<hi){const mid=(lo+hi)>>1;if(cum[mid]<r)lo=mid+1;else hi=mid;}
-    const t=lo,a=ia?ia[t*3]:t*3,b=ia?ia[t*3+1]:t*3+1,c=ia?ia[t*3+2]:t*3+2;
-    _va.fromBufferAttribute(pos,a);_vb.fromBufferAttribute(pos,b);_vc.fromBufferAttribute(pos,c);
-    let u=rng(),v=rng();if(u+v>1){u=1-u;v=1-v;}
-    _vb.sub(_va).multiplyScalar(u);_vc.sub(_va).multiplyScalar(v);
-    _va.add(_vb).add(_vc).applyMatrix4(matrix);
-    const cx=Math.floor(_va.x/step),cy=Math.floor(_va.y/step),cz=Math.floor(_va.z/step);
-    const key=(cx+512)+(cy+512)*1024+(cz+512)*1048576;
-    if(!cells.has(key))cells.set(key,col);
+  const closed=new Uint8Array(mask);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    if(!mask[i]&&mask[i-1]&&mask[i+1]&&mask[i-W]&&mask[i+W])closed[i]=1;
+    if(mask[i]&&!mask[i-1]&&!mask[i+1]&&!mask[i-W]&&!mask[i+W])closed[i]=0;
   }
+  mask.set(closed);
+  await raf();progress(0.15);
+
+  /* 2 · градиенты яркости (Sobel) и цвета */
+  const lum=new Float32Array(N);
+  for(let i=0;i<N;i++){const o=i*4;lum[i]=0.2126*data[o]+0.7152*data[o+1]+0.0722*data[o+2];}
+  const edge=REF.edge=new Float32Array(N);
+  let maxE=1e-6;
+  for(let y=1;y<H-1;y++){
+    for(let x=1;x<W-1;x++){
+      const i=y*W+x;
+      const gx=lum[i-W+1]+2*lum[i+1]+lum[i+W+1]-lum[i-W-1]-2*lum[i-1]-lum[i+W-1];
+      const gy=lum[i+W-1]+2*lum[i+W]+lum[i+W+1]-lum[i-W-1]-2*lum[i-W]-lum[i-W+1];
+      const j=i+1,k2=i+W;
+      const cg=Math.max(
+        Math.abs(data[i*4]-data[j*4])+Math.abs(data[i*4+1]-data[j*4+1])+Math.abs(data[i*4+2]-data[j*4+2]),
+        Math.abs(data[i*4]-data[k2*4])+Math.abs(data[i*4+1]-data[k2*4+1])+Math.abs(data[i*4+2]-data[k2*4+2]));
+      const e=Math.sqrt(gx*gx+gy*gy)*0.25+cg;
+      edge[i]=e;if(e>maxE)maxE=e;
+    }
+  }
+  for(let i=0;i<N;i++)edge[i]/=maxE;
+  await raf();progress(0.3);
+
+  /* 3 · порог контуров: перцентиль градиента внутри силуэта */
+  const hist=new Uint32Array(256);
+  let inMask=0;
+  for(let i=0;i<N;i++)if(mask[i]){hist[Math.min(255,(edge[i]*255)|0)]++;inMask++;}
+  const thrQ=Math.floor(inMask*0.86);
+  let acc=0,edgeThr=0.5;
+  for(let b=0;b<256;b++){acc+=hist[b];if(acc>=thrQ){edgeThr=b/255;break;}}
+  await raf();progress(0.38);
+
+  /* 4 · distance transform (chamfer 3-4) от границы силуэта */
+  const dist=REF.dist=new Float32Array(N);
+  const INF=1e9;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const i=y*W+x;
+    if(!mask[i]){dist[i]=0;continue;}
+    const bnd=x===0||y===0||x===W-1||y===H-1||!mask[i-1]||!mask[i+1]||!mask[i-W]||!mask[i+W];
+    dist[i]=bnd?0:INF;
+  }
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const i=y*W+x;if(!mask[i]||dist[i]===0)continue;
+    let d=dist[i];
+    if(x>0)d=Math.min(d,dist[i-1]+3);
+    if(y>0){d=Math.min(d,dist[i-W]+3);
+      if(x>0)d=Math.min(d,dist[i-W-1]+4);
+      if(x<W-1)d=Math.min(d,dist[i-W+1]+4);}
+    dist[i]=d;
+  }
+  for(let y=H-1;y>=0;y--)for(let x=W-1;x>=0;x--){
+    const i=y*W+x;if(!mask[i]||dist[i]===0)continue;
+    let d=dist[i];
+    if(x<W-1)d=Math.min(d,dist[i+1]+3);
+    if(y<H-1){d=Math.min(d,dist[i+W]+3);
+      if(x<W-1)d=Math.min(d,dist[i+W+1]+4);
+      if(x>0)d=Math.min(d,dist[i+W-1]+4);}
+    dist[i]=d;
+  }
+  for(let i=0;i<N;i++)dist[i]/=3;
+  REF.metersPerPx=REF_H/H;
+  await raf();progress(0.55);
+
+  /* 5 · Z-рельеф (коэффициент выпуклости) + нормали поверхности */
+  const tau=Math.max(4,W*0.035);
+  const depth0=new Float32Array(N);
+  for(let i=0;i<N;i++)depth0[i]=mask[i]?dist[i]/(dist[i]+tau):0;
+  const depth=REF.depth=new Float32Array(N);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    depth[i]=(depth0[i]*4+depth0[i-1]+depth0[i+1]+depth0[i-W]+depth0[i+W]
+      +depth0[i-W-1]+depth0[i-W+1]+depth0[i+W-1]+depth0[i+W+1])/12;
+  }
+  const nx=REF.nx=new Float32Array(N),ny=REF.ny=new Float32Array(N),nz=REF.nz=new Float32Array(N);
+  const k=0.14/REF.metersPerPx;
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    const dzx=(depth[i+1]-depth[i-1])*0.5*k,dzy=(depth[i+W]-depth[i-W])*0.5*k;
+    const l=Math.sqrt(dzx*dzx+dzy*dzy+1);
+    nx[i]=-dzx/l;ny[i]=-dzy/l;nz[i]=1/l;
+  }
+  await raf();progress(0.7);
+
+  /* 6 · векторные контуры: силуэт (Moore) + детали по градиенту */
+  const CDX=[1,1,0,-1,-1,-1,0,1],CDY=[0,1,1,1,0,-1,-1,-1];
+  function trace(sx,sy,bin){
+    const line=[sx,sy];
+    let x=sx,y=sy,b=4;
+    const guard=4*(W+H)+64;
+    for(let s=0;s<guard;s++){
+      let found=-1;
+      for(let kk=1;kk<=8;kk++){
+        const nd=(b+kk)%8,tx=x+CDX[nd],ty=y+CDY[nd];
+        if(tx<0||ty<0||tx>=W||ty>=H)continue;
+        if(bin[ty*W+tx]){found=nd;break;}
+      }
+      if(found<0)break;
+      x+=CDX[found];y+=CDY[found];
+      b=(found+4)%8;
+      line.push(x,y);
+      if(x===sx&&y===sy)break;
+    }
+    return line;
+  }
+  function extract(bin,maxLines){
+    const lines=[];
+    for(let i=0;i<N;i++){
+      if(!bin[i])continue;
+      const x=i%W,y=(i/W)|0;
+      if(y>0&&bin[i-W])continue;
+      if(x>0&&bin[i-1])continue;
+      const line=trace(x,y,bin);
+      if(line.length>=12)lines.push(line);
+      if(lines.length>=maxLines)break;
+    }
+    return lines;
+  }
+  const bbin=new Uint8Array(N);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    if(mask[i]&&(!mask[i-1]||!mask[i+1]||!mask[i-W]||!mask[i+W]))bbin[i]=1;
+  }
+  REF.contours=extract(bbin,64);
+  const ebin=new Uint8Array(N);
+  for(let i=0;i<N;i++)ebin[i]=(mask[i]&&edge[i]>edgeThr)?1:0;
+  REF.detailContours=extract(ebin,240);
+  await raf();progress(0.85);
+
+  /* 7 · карта регионов деталей: капюшон/голова, торс, плащ, руки, ноги (2D-пробы костей) */
+  const region=REF.region=new Uint8Array(N);
+  const probes=[
+    [REGION.HEAD,0,1.46,0,1.76],
+    [REGION.TORSO,0,0.95,0,1.40],
+    [REGION.ARM_L,0.10,1.41,0.86,1.43],[REGION.ARM_R,-0.10,1.41,-0.86,1.43],
+    [REGION.LEG_L,0.10,0.94,0.10,0.10],[REGION.LEG_R,-0.10,0.94,-0.10,0.10],
+    [REGION.FEET,0.10,0.12,0.13,0.02],[REGION.FEET,-0.10,0.12,-0.13,0.02]
+  ];
+  const probeDist=(wx,wy,p)=>{
+    const dx=p[3]-p[1],dy=p[4]-p[2];
+    const t=clamp(((wx-p[1])*dx+(wy-p[2])*dy)/(dx*dx+dy*dy||1e-9),0,1);
+    const qx=p[1]+dx*t-wx,qy=p[2]+dy*t-wy;
+    return Math.sqrt(qx*qx+qy*qy);
+  };
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const i=y*W+x;if(!mask[i])continue;
+    const wx=(x/(W-1)-0.5)*REF.worldW,wy=(1-y/(H-1))*REF_H,ax=Math.abs(wx);
+    let r;
+    if(wy<0.92&&ax<0.05)r=REGION.CLOAK;
+    else{
+      let best=-1,bd=1e9;
+      for(let p2=0;p2<probes.length;p2++){
+        const q=probeDist(wx,wy,probes[p2]);
+        if(q<bd){bd=q;best=p2;}
+      }
+      r=probes[best][0];
+      if(r===REGION.TORSO)r=(dist[i]<tau*0.55||(wy<1.02&&ax>0.17))?REGION.CLOAK:REGION.TORSO;
+    }
+    region[i]=r;
+  }
+  REF.ready=true;
+  progress(1);
+}
+
+/* миниатюра референса с векторными контурами */
+function drawRefThumb(){
+  const t=$('refThumb');
+  if(!t||!REF.canvas)return;
+  const tw=t.width,th=t.height;
+  const ctx=t.getContext('2d');
+  ctx.fillStyle='#0d0e11';ctx.fillRect(0,0,tw,th);
+  if(!REF.W)return;
+  ctx.drawImage(REF.canvas,0,0,REF.W,REF.H,0,0,tw,th);
+  const sx=tw/REF.W,sy=th/REF.H;
+  ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(224,154,85,.85)';
+  ctx.beginPath();
+  for(const c of REF.contours){
+    ctx.moveTo(c[0]*sx,c[1]*sy);
+    for(let i=2;i<c.length;i+=2)ctx.lineTo(c[i]*sx,c[i+1]*sy);
+  }
+  ctx.stroke();
+  ctx.strokeStyle='rgba(111,135,184,.7)';
+  ctx.beginPath();
+  for(const c of REF.detailContours){
+    ctx.moveTo(c[0]*sx,c[1]*sy);
+    for(let i=2;i<c.length;i+=2)ctx.lineTo(c[i]*sx,c[i+1]*sy);
+  }
+  ctx.stroke();
+  $('refStats').textContent=`КОНТУРОВ: ${REF.contours.length+REF.detailContours.length} · ${(REF.metersPerPx*1000).toFixed(1)} ММ/ПХ`;
 }
 
 /* ---------- облака точек + плавная замена проходов ---------- */
-let cloud=null,fade=null,cellStep=0.007,sizeMult=1.10;
+let cloud=null,fade=null,cellStep=0.003,sizeMult=1.10;
+/* ---------- этап 2 · шейдерное слияние: сплэты → монолитная поверхность ---------- */
+const SPLAT_OVERLAP=2.2;
+function makeSplat(){
+  return new THREE.ShaderMaterial({
+    uniforms:{
+      uSize:{value:0.01},
+      uScale:{value:1},
+      uOpacity:{value:0},
+      uLight:{value:new THREE.Vector3(0.42,0.35,0.84).normalize()},
+      uFogColor:{value:new THREE.Color(0x0d0e11)},
+      uFogDensity:{value:0.05}
+    },
+    vertexColors:true,
+    transparent:true,
+    depthWrite:true,
+    vertexShader:`
+      uniform float uSize;
+      uniform float uScale;
+      varying vec3 vColor;
+      varying vec3 vNormal;
+      varying vec3 vViewPos;
+      varying float vFogDepth;
+      void main(){
+        vColor=color;
+        vNormal=normalize(normalMatrix*normal);
+        vec4 mv=modelViewMatrix*vec4(position,1.0);
+        vViewPos=mv.xyz;
+        vFogDepth=-mv.z;
+        gl_PointSize=uSize*uScale/max(0.1,-mv.z);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`
+      uniform float uOpacity;
+      uniform vec3 uLight;
+      uniform vec3 uFogColor;
+      uniform float uFogDensity;
+      varying vec3 vColor;
+      varying vec3 vNormal;
+      varying vec3 vViewPos;
+      varying float vFogDepth;
+      void main(){
+        vec2 c=gl_PointCoord*2.0-1.0;
+        float r2=dot(c,c);
+        if(r2>1.0) discard;
+        vec3 N=normalize(vNormal);
+        vec3 V=normalize(-vViewPos);
+        vec3 L=normalize(uLight);
+        float diff=max(dot(N,L),0.0);
+        vec3 H=normalize(L+V);
+        float spec=pow(max(dot(N,H),0.0),26.0)*0.16;
+        float rim=pow(1.0-max(dot(N,V),0.0),3.0)*0.20;
+        vec3 col=vColor*(0.78+0.22*diff)+vec3(spec)+rim*vec3(0.55,0.65,0.9);
+        float fog=1.0-exp(-uFogDensity*uFogDensity*vFogDepth*vFogDepth);
+        col=mix(col,uFogColor,fog);
+        gl_FragColor=vec4(col,uOpacity);
+      }`
+  });
+}
+function makeMaterial(cell){
+  if(state.renderMode==='surface'){
+    const m=makeSplat();
+    m.uniforms.uSize.value=cell*sizeMult*SPLAT_OVERLAP;
+    m.uniforms.uScale.value=splatScale();
+    return m;
+  }
+  const m=pointMat.clone();m.size=cell*sizeMult;return m;
+}
+function splatScale(){return renderer.domElement.height*0.5;}
+function setMatOpacity(mat,v){
+  mat.opacity=v;
+  if(mat.uniforms&&mat.uniforms.uOpacity)mat.uniforms.uOpacity.value=v;
+}
+function applySize(mat,cell){
+  if(mat.uniforms&&mat.uniforms.uSize)mat.uniforms.uSize.value=cell*sizeMult*SPLAT_OVERLAP;
+  else mat.size=cell*sizeMult;
+}
+function updateSplatScale(){
+  const s=splatScale(),list=[];
+  if(cloud)list.push(cloud.mat);
+  if(fade)list.push(fade.old.mat,fade.nu.mat);
+  for(const m of list)if(m.uniforms&&m.uniforms.uScale)m.uniforms.uScale.value=s;
+}
+function setCloudOpacity(c,v){
+  setMatOpacity(c.mat,v);
+  for(const m of c.meshMats)m.opacity=v;
+}
+function applyRenderMode(c){
+  const meshMode=state.renderMode==='mesh';
+  for(const p of c.points)p.visible=!meshMode;
+  for(const m of c.meshes)m.visible=meshMode;
+  for(const w of c.wires)w.visible=meshMode&&state.wire;
+}
+function setRenderMode(m){
+  if(state.renderMode===m)return;
+  state.renderMode=m;
+  document.querySelectorAll('.rmode').forEach(b=>b.classList.toggle('active',b.dataset.rmode===m));
+  if(cloud)applyRenderMode(cloud);
+  if(fade){applyRenderMode(fade.old);applyRenderMode(fade.nu);}
+  toast(m==='mesh'?'Сетка: 3 точки = плоскость':m==='surface'?'Слияние: монолитная поверхность':'Режим облака точек');
+}
 function disposeCloud(c){
   if(!c)return;
   for(const p of c.points){if(p.parent)p.parent.remove(p);p.geometry.dispose();}
+  for(const m of c.meshes){if(m.parent)m.parent.remove(m);m.geometry.dispose();}
+  for(const w of c.wires){if(w.parent)w.parent.remove(w);}
   c.mat.dispose();
+  for(const m of c.meshMats)m.dispose();
+  for(const m of c.wireMats)m.dispose();
 }
 function finishFade(){
   if(!fade)return;
   disposeCloud(fade.old);
-  fade.nu.mat.opacity=1;fade.nu.mat.depthWrite=true;
+  setCloudOpacity(fade.nu,1);fade.nu.mat.depthWrite=true;
+  for(const m of fade.nu.meshMats)m.depthWrite=true;
   fade=null;
 }
 function setCloud(nu,fadeDur=0.6){
   finishFade();
   const old=cloud;cloud=nu;
   if(old&&fadeDur>0){fade={old,nu,t:0,dur:fadeDur};old.mat.depthWrite=false;nu.mat.depthWrite=false;}
-  else{nu.mat.opacity=1;nu.mat.depthWrite=true;disposeCloud(old);}
+  else{setCloudOpacity(nu,1);nu.mat.depthWrite=true;for(const m of nu.meshMats)m.depthWrite=true;disposeCloud(old);}
+  applyRenderMode(nu);
   updateCount();
 }
 function updateFade(dt){
   if(!fade)return;
   fade.t+=dt;const u=clamp(fade.t/fade.dur,0,1),e=u*u*(3-2*u);
-  fade.nu.mat.opacity=e;fade.old.mat.opacity=1-e;
+  setCloudOpacity(fade.nu,e);setCloudOpacity(fade.old,1-e);
   if(u>=1)finishFade();
 }
 function updateCount(){
@@ -539,50 +955,251 @@ function updateCount(){
   $('pointCount').textContent=n.toLocaleString('ru-RU');
   $('telPts').textContent=n.toLocaleString('ru-RU');
 }
-async function buildCloud(step){
-  charRoot.updateMatrixWorld(true);
-  const inv=new THREE.Matrix4(),m4=new THREE.Matrix4();
-  const rng=mulberry32(47);
-  const mat=pointMat.clone();mat.size=step*sizeMult;mat.opacity=0;mat.depthWrite=false;
-  const points=[];let totalPts=0,nodeIdx=0;
-  for(const name of POSE_NODES){
-    const rn=rig[name].node;
-    inv.copy(rn.matrixWorld).invert();
-    const cells=new Map();
-    const collect=o=>{for(const ch of o.children){if(rigSet.has(ch))continue;if(ch.isMesh)sampleMesh(ch,m4.multiplyMatrices(inv,ch.matrixWorld),step,cells,rng);else collect(ch);}};
-    collect(rn);
-    const P=[],Cl=[];
-    for(const[key,col]of cells){
-      if(cells.has(key+1)&&cells.has(key-1)&&cells.has(key+1024)&&cells.has(key-1024)&&cells.has(key+1048576)&&cells.has(key-1048576))continue;
-      const cx=key%1024-512,cy=Math.floor(key/1024)%1024-512,cz=Math.floor(key/1048576)-512;
-      P.push((cx+0.5)*step,(cy+0.5)*step,(cz+0.5)*step);
-      const h=((key*2654435761)>>>0),f=(0.8+((h>>>8)&255)/255*0.4)*1.8;
-      Cl.push(Math.min(1,col.r*f),Math.min(1,col.g*f),Math.min(1,col.b*f));
-    }
-    if(P.length){
-      const g=new THREE.BufferGeometry();
-      g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
-      g.setAttribute('color',new THREE.Float32BufferAttribute(Cl,3));
-      g.computeBoundingSphere();
-      const pts=new THREE.Points(g,mat);pts.name=name+'_pts';rn.add(pts);points.push(pts);
-      totalPts+=P.length/3;
-    }
-    if(++nodeIdx%4===0)await raf();   // не блокируем интерфейс на тяжёлом проходе
+/* плотная векторная сетка узлов → точки + треугольные плоскости (3 точки = плоскость) */
+async function buildCloud(step,onProg){
+  const prog=onProg||(()=>{});
+  if(!REF.ready){
+    prog(0.02,'АНАЛИЗ РЕФЕРЕНСА…');
+    await analyzeReference(p=>prog(0.02+p*0.2,'АНАЛИЗ РЕФЕРЕНСА…'));
   }
-  return {points,mat,count:totalPts,cell:step};
+  prog(0.25,'ВЕКТОРНЫЕ УЗЛЫ…');
+  applyPose(ZERO);charRoot.updateMatrixWorld(true);
+  const W=REF.W,H=REF.H,data=REF.data,mask=REF.mask,depth=REF.depth,
+        edge=REF.edge,dist=REF.dist,region=REF.region,
+        nx=REF.nx,ny=REF.ny,nz=REF.nz;
+  const WW=REF.worldW;
+  const colsX=Math.round(WW/step),colsY=Math.round(REF_H/step);
+  const NV=colsX*colsY;
+  const nValid=new Uint8Array(NV),nCore=new Uint8Array(NV),nBone=new Uint8Array(NV);
+  const nZf=new Float32Array(NV),nZb=new Float32Array(NV);
+  const nCr=new Float32Array(NV),nCg=new Float32Array(NV),nCb=new Float32Array(NV);
+  const nNx=new Float32Array(NV),nNy=new Float32Array(NV),nNz=new Float32Array(NV);
+  const segByName={};
+  for(const[n,p]of RIG_DEF){
+    if(!p)continue;
+    const a=rig[n].node.getWorldPosition(new THREE.Vector3());
+    const b=rig[p].node.getWorldPosition(new THREE.Vector3());
+    segByName[n]={ax:a.x,ay:a.y,az:a.z,bx:b.x,by:b.y,bz:b.z};
+  }
+  const boneNames=POSE_NODES.slice();
+  const BONE_IDX=new Map();boneNames.forEach((n,k)=>BONE_IDX.set(n,k));
+  const locals=new Map();
+  for(const name of POSE_NODES)locals.set(name,new THREE.Matrix4().copy(rig[name].node.matrixWorld).invert());
+  const light=new THREE.Vector3(0.42,0.35,0.84).normalize();
+  const tau=Math.max(4,W*0.035);
+  /* фаза 1 · векторные узлы сетки: цвет, Z-рельеф, нормаль, кость */
+  for(let gy=0;gy<colsY;gy++){
+    const wy=(gy+0.5)*step;
+    const py=Math.round((1-wy/REF_H)*(H-1));
+    if(py<1||py>=H-1)continue;
+    for(let gx=0;gx<colsX;gx++){
+      const wx=(gx+0.5)*step-WW/2;
+      const px=Math.round((wx/WW+0.5)*(W-1));
+      const i=py*W+px;
+      if(!mask[i])continue;
+      const ni=gy*colsX+gx;
+      const reg=region[i]||REGION.TORSO;
+      const d=depth[i],ex=edge[i];
+      const sc=REGION_SCALE[reg]||0.13;
+      const zf=d*sc+ex*0.012*(reg===REGION.CLOAK?1.5:1);
+      let cands=REGION_BONES[reg]||['Chest'];
+      if(reg===REGION.FEET)cands=wx>0?REGION_BONES[REGION.LEG_L]:REGION_BONES[REGION.LEG_R];
+      let best='Chest',bd=1e9;
+      for(const bn of cands){
+        const sgm=segByName[bn];if(!sgm)continue;
+        const dx=sgm.bx-sgm.ax,dy=sgm.by-sgm.ay,dz=sgm.bz-sgm.az;
+        const t=clamp(((wx-sgm.ax)*dx+(wy-sgm.ay)*dy+(zf-sgm.az)*dz)/(dx*dx+dy*dy+dz*dz||1),0,1);
+        const qx=sgm.ax+dx*t-wx,qy=sgm.ay+dy*t-wy,qz=sgm.az+dz*t-zf;
+        const q=qx*qx+qy*qy+qz*qz;
+        if(q<bd){bd=q;best=bn;}
+      }
+      const o=i*4;
+      const nX=nx[i],nY=ny[i],nZ=nz[i]||1;
+      const ndl=Math.max(0,nX*light.x+nY*light.y+nZ*light.z);
+      const shade=0.42+0.58*ndl;
+      nValid[ni]=1;
+      nZf[ni]=zf;
+      nZb[ni]=-(d*sc*0.82+zf*0.5);
+      nCr[ni]=Math.pow(data[o]/255,2.2)*shade;
+      nCg[ni]=Math.pow(data[o+1]/255,2.2)*shade;
+      nCb[ni]=Math.pow(data[o+2]/255,2.2)*shade;
+      nNx[ni]=nX;nNy[ni]=nY;nNz[ni]=nZ;
+      nBone[ni]=BONE_IDX.has(best)?BONE_IDX.get(best):BONE_IDX.get('Chest');
+      nCore[ni]=dist[i]>tau*1.6?1:0;
+    }
+    if((gy&15)===0){
+      prog(0.25+0.35*gy/colsY,`ВЕКТОРНЫЕ УЗЛЫ · ${Math.round(gy/colsY*100)}%`);
+      await raf();
+    }
+  }
+  /* фаза 2 · облако точек из узлов */
+  prog(0.6,'ОБЛАКО ТОЧЕК…');
+  const byBone=new Map();
+  const getBuf=k=>{let o2=byBone.get(k);if(!o2){o2={p:[],c:[],n:[]};byBone.set(k,o2);}return o2;};
+  const rng=mulberry32(47);
+  let total=0;
+  for(let gy=0;gy<colsY;gy++)for(let gx=0;gx<colsX;gx++){
+    const ni=gy*colsX+gx;
+    if(!nValid[ni])continue;
+    const x=(gx+0.5)*step-WW/2+(rng()-0.5)*step*0.3;
+    const y=(gy+0.5)*step+(rng()-0.5)*step*0.3;
+    const cr=nCr[ni],cg=nCg[ni],cb=nCb[ni];
+    const k2=nBone[ni],buf=getBuf(k2);
+    buf.p.push(x,y,nZf[ni]);
+    buf.c.push(cr,cg,cb);
+    buf.n.push(nNx[ni],nNy[ni],nNz[ni]);
+    buf.p.push(x,y,nZb[ni]);
+    buf.c.push(cr*0.55,cg*0.55,cb*0.55);
+    buf.n.push(-nNx[ni],-nNy[ni],-nNz[ni]);
+    total+=2;
+    if(nCore[ni]&&((gx+gy)&1)===0){
+      buf.p.push(x,y,0);
+      buf.c.push(cr*0.4,cg*0.4,cb*0.4);
+      buf.n.push(0,0,1);
+      total++;
+    }
+  }
+  const mat=makeMaterial(step);setMatOpacity(mat,0);mat.depthWrite=false;
+  const points=[];
+  for(const[k2,buf]of byBone){
+    if(!buf.p.length)continue;
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(buf.p,3));
+    g.setAttribute('color',new THREE.Float32BufferAttribute(buf.c,3));
+    g.setAttribute('normal',new THREE.Float32BufferAttribute(buf.n,3));
+    const M=locals.get(boneNames[k2]),arr=g.attributes.position.array,E=M.elements;
+    for(let v=0;v<arr.length;v+=3){
+      const x=arr[v],y=arr[v+1],z=arr[v+2];
+      arr[v]=E[0]*x+E[4]*y+E[8]*z+E[12];
+      arr[v+1]=E[1]*x+E[5]*y+E[9]*z+E[13];
+      arr[v+2]=E[2]*x+E[6]*y+E[10]*z+E[14];
+    }
+    g.computeBoundingSphere();
+    const pts=new THREE.Points(g,mat);pts.name=boneNames[k2]+'_scan';
+    rig[boneNames[k2]].node.add(pts);points.push(pts);
+  }
+  /* фаза 3 · треугольные плоскости: соседние узлы → 3 точки = плоскость */
+  prog(0.72,'ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ…');
+  const chunks=new Map();
+  const getChunk=bn=>{
+    let ch=chunks.get(bn);
+    if(!ch){ch={pos:[],col:[],idx:[],mapF:new Map(),mapB:new Map()};chunks.set(bn,ch);}
+    return ch;
+  };
+  const loc3=(bn,x,y,z,out)=>{
+    const E=locals.get(bn).elements;
+    out[0]=E[0]*x+E[4]*y+E[8]*z+E[12];
+    out[1]=E[1]*x+E[5]*y+E[9]*z+E[13];
+    out[2]=E[2]*x+E[6]*y+E[10]*z+E[14];
+  };
+  const _v3=[0,0,0];
+  const addVert=(ch,mp,ni,bn,x,y,z,r,g,b)=>{
+    let k=mp.get(ni);
+    if(k===undefined){
+      loc3(bn,x,y,z,_v3);
+      k=ch.pos.length/3;
+      ch.pos.push(_v3[0],_v3[1],_v3[2]);
+      ch.col.push(r,g,b);
+      mp.set(ni,k);
+    }
+    return k;
+  };
+  const wxOf=gx=>(gx+0.5)*step-WW/2,wyOf=gy=>(gy+0.5)*step;
+  const vertF=(ch,mp,ni,bn)=>{
+    const gx=ni%colsX,gy=(ni/colsX)|0;
+    return addVert(ch,mp,ni,bn,wxOf(gx),wyOf(gy),nZf[ni],nCr[ni],nCg[ni],nCb[ni]);
+  };
+  const vertB=(ch,mp,ni,bn)=>{
+    const gx=ni%colsX,gy=(ni/colsX)|0;
+    return addVert(ch,mp,ni,bn,wxOf(gx),wyOf(gy),nZb[ni],nCr[ni]*0.55,nCg[ni]*0.55,nCb[ni]*0.55);
+  };
+  const triBones=(a,b,c)=>{
+    const set=new Set([boneNames[nBone[a]],boneNames[nBone[b]],boneNames[nBone[c]]]);
+    return[...set];
+  };
+  for(let gy=0;gy<colsY-1;gy++){
+    for(let gx=0;gx<colsX-1;gx++){
+      const a=gy*colsX+gx,b=a+1,c2=a+colsX+1,d2=a+colsX;
+      if(!(nValid[a]&&nValid[b]&&nValid[c2]&&nValid[d2]))continue;
+      for(const[t0,t1,t2]of[[a,b,c2],[a,c2,d2]]){
+        for(const bn of triBones(t0,t1,t2)){
+          const ch=getChunk(bn);
+          const i0=vertF(ch,ch.mapF,t0,bn),i1=vertF(ch,ch.mapF,t1,bn),i2=vertF(ch,ch.mapF,t2,bn);
+          ch.idx.push(i0,i1,i2);
+        }
+      }
+      for(const[t0,t1,t2]of[[a,c2,b],[a,d2,c2]]){
+        for(const bn of triBones(t0,t1,t2)){
+          const ch=getChunk(bn);
+          const i0=vertB(ch,ch.mapB,t0,bn),i1=vertB(ch,ch.mapB,t1,bn),i2=vertB(ch,ch.mapB,t2,bn);
+          ch.idx.push(i0,i1,i2);
+        }
+      }
+    }
+    if((gy&31)===0){
+      prog(0.72+0.2*gy/colsY,`ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ · ${Math.round(gy/colsY*100)}%`);
+      await raf();
+    }
+  }
+  /* стены по границе силуэта — замыкание оболочек в монолит */
+  const wall=(a,b)=>{
+    const set=new Set([boneNames[nBone[a]],boneNames[nBone[b]]]);
+    for(const bn of set){
+      const ch=getChunk(bn);
+      const f0=vertF(ch,ch.mapF,a,bn),f1=vertF(ch,ch.mapF,b,bn);
+      const b1=vertB(ch,ch.mapB,b,bn),b0=vertB(ch,ch.mapB,a,bn);
+      ch.idx.push(f0,f1,b1,f0,b1,b0);
+    }
+  };
+  for(let gy=0;gy<colsY;gy++)for(let gx=0;gx<colsX-1;gx++){
+    const a=gy*colsX+gx,b=a+1;
+    if(!(nValid[a]&&nValid[b]))continue;
+    const above=gy+1<colsY&&nValid[a+colsX]&&nValid[b+colsX];
+    const below=gy>0&&nValid[a-colsX]&&nValid[b-colsX];
+    if(above&&below)continue;
+    wall(a,b);
+  }
+  for(let gx=0;gx<colsX;gx++)for(let gy=0;gy<colsY-1;gy++){
+    const a=gy*colsX+gx,b=a+colsX;
+    if(!(nValid[a]&&nValid[b]))continue;
+    const lft=gx>0&&nValid[a-1]&&nValid[b-1];
+    const rgt=gx+1<colsX&&nValid[a+1]&&nValid[b+1];
+    if(lft&&rgt)continue;
+    wall(a,b);
+  }
+  /* сборка мешей по костям */
+  prog(0.95,'СБОРКА МЕША…');await raf();
+  const meshes=[],wires=[],meshMats=[],wireMats=[];
+  for(const[bn,ch]of chunks){
+    if(!ch.idx.length)continue;
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(ch.pos,3));
+    g.setAttribute('color',new THREE.Float32BufferAttribute(ch.col,3));
+    g.setIndex(ch.idx);
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+    const mm=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,transparent:true,opacity:0});
+    const ms=new THREE.Mesh(g,mm);ms.name=bn+'_mesh';ms.visible=false;
+    rig[bn].node.add(ms);meshes.push(ms);meshMats.push(mm);
+    const wm=new THREE.MeshBasicMaterial({wireframe:true,color:0xe09a55,transparent:true,opacity:0.22,depthWrite:false});
+    const wire=new THREE.Mesh(g,wm);wire.name=bn+'_wire';wire.visible=false;
+    rig[bn].node.add(wire);wires.push(wire);wireMats.push(wm);
+  }
+  prog(1,'ГОТОВО');
+  return {points,meshes,wires,meshMats,wireMats,mat,count:total,cell:step};
 }
 
 /* ---------- последовательная сборка по референсу ---------- */
 const PASSES=[
-  {cell:0.020,view:'front',label:'FRONT',desc:'грубый каркас'},
-  {cell:0.013,view:'left',label:'LEFT SIDE',desc:'форма и силуэт'},
-  {cell:0.009,view:'back',label:'BACK',desc:'объём плаща и брони'},
-  {cell:0.007,view:'right',label:'RIGHT SIDE',desc:'финальная плотность ≈ ×3'}
+  {cell:0.012,view:'front',label:'FRONT',desc:'грубый векторный каркас'},
+  {cell:0.006,view:'left',label:'LEFT SIDE',desc:'форма и силуэт'},
+  {cell:0.003,view:'back',label:'BACK',desc:'контуры, складки, рельеф'},
+  {cell:0.002,view:'right',label:'RIGHT SIDE',desc:'финальная плотность 2 мм'}
 ];
-let seqToken=0,state={mode:'idle',blend:1,paused:false,speed:1,poseTime:0,exporting:false,building:false,busy:false};
+let seqToken=0,state={mode:'idle',blend:1,paused:false,speed:1,poseTime:0,exporting:false,building:false,busy:false,renderMode:'mesh',wire:true};
 function setControlsEnabled(on){
   document.querySelectorAll('.mode').forEach(b=>b.disabled=!on);
-  ['rngSpeed','rngCell','rngSize','btnPlay','btnCam','btnSequence','btnGLB','btnOBJ'].forEach(id=>$(id).disabled=!on);
+  ['rngSpeed','rngCell','rngSize','btnPlay','btnCam','btnSequence','btnGLB','btnOBJ','btnRefLoad','btnRefReset','btnWire'].forEach(id=>$(id).disabled=!on);
 }
 function tweenCamTo(v,dur=1.1){
   camTween={t:0,dur,fp:camera.position.clone(),tp:v.pos.clone(),ft:controls.target.clone(),tt:v.tgt.clone()};
@@ -609,12 +1226,13 @@ async function runSequence(){
   }
   if(token!==seqToken)return;
   finishFade();
-  cellStep=0.007;$('rngCell').value=7;$('valCell').textContent='7 мм';paintRange($('rngCell'));
+  cellStep=0.002;$('rngCell').value=2;$('valCell').textContent='2 мм';$('cellNow').textContent='2 ММ';paintRange($('rngCell'));
+  drawRefThumb();
   $('build').classList.remove('on');
   state.building=false;setControlsEnabled(true);
   tweenCamTo(CAM_HOME,1.25);
   forceMode('idle');
-  toast('Сборка завершена · '+cloud.count.toLocaleString('ru-RU')+' точек · ≈ ×3');
+  toast('Сборка завершена · '+cloud.count.toLocaleString('ru-RU')+' точек · векторная сетка 2 мм');
 }
 
 /* ---------- позы ---------- */
@@ -711,7 +1329,7 @@ function toast(msg,type='ok'){
 function paintRange(el){const p=(el.value-el.min)/(el.max-el.min)*100;el.style.background=`linear-gradient(90deg,var(--rust) ${p}%,rgba(200,194,182,.13) ${p}%)`;}
 function forceMode(m){
   copyPose(poseMix,blendFrom);state.blend=0;state.mode=m;
-  document.querySelectorAll('.mode').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  document.querySelectorAll('.mode[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
   $('telMode').textContent=m.toUpperCase();
 }
 function setMode(m){if(!state.building)forceMode(m);}
@@ -760,27 +1378,56 @@ async function exportOBJ(){
 async function rebuildNow(){
   if(state.busy||state.building)return;
   state.busy=true;$('rngCell').disabled=true;
-  const c=await buildCloud(cellStep);
+  $('buildLabel').textContent='ВЕКТОРНОЕ СКАНИРОВАНИЕ';
+  $('buildSub').textContent=`${REF.name} · ячейка ${Math.round(cellStep*1000)} мм`;
+  $('build').classList.add('on');$('buildBar').style.width='0%';$('buildPct').textContent='0%';
+  const c=await buildCloud(cellStep,(p,s)=>{
+    $('buildBar').style.width=Math.round(p*100)+'%';
+    $('buildPct').textContent=Math.round(p*100)+'%';
+    $('buildSub').textContent=s;
+  });
   setCloud(c,0.35);
+  drawRefThumb();
+  $('build').classList.remove('on');
   state.busy=false;$('rngCell').disabled=false;
 }
 function bindUI(){
-  document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+  document.querySelectorAll('.mode[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+  document.querySelectorAll('.rmode').forEach(b=>b.addEventListener('click',()=>setRenderMode(b.dataset.rmode)));
+  $('btnWire').addEventListener('click',()=>{
+    state.wire=!state.wire;
+    $('btnWire').textContent='ЛИНИИ СЕТКИ: '+(state.wire?'ВКЛ':'ВЫКЛ');
+    if(cloud)applyRenderMode(cloud);
+    if(fade){applyRenderMode(fade.old);applyRenderMode(fade.nu);}
+  });
   $('btnPlay').addEventListener('click',togglePause);
   $('btnCam').addEventListener('click',()=>tweenCamTo(CAM_HOME,0.9));
   $('btnSequence').addEventListener('click',runSequence);
+  $('btnRefLoad').addEventListener('click',()=>$('fileRef').click());
+  $('fileRef').addEventListener('change',e=>{
+    const f=e.target.files[0];
+    if(f)loadReferenceFile(f);
+    e.target.value='';
+  });
+  $('btnRefReset').addEventListener('click',async()=>{
+    if(state.busy||state.building)return;
+    state.busy=true;
+    setReferenceCanvas(renderProceduralReference(),'ПРОЦЕДУРНЫЙ');
+    state.busy=false;
+    await rebuildNow();
+  });
   const speed=$('rngSpeed');paintRange(speed);
   speed.addEventListener('input',()=>{state.speed=+speed.value;$('valSpeed').textContent='×'+(+speed.value).toFixed(2);paintRange(speed);});
   const cell=$('rngCell');paintRange(cell);let deb=null;
   cell.addEventListener('input',()=>{
-    $('valCell').textContent=cell.value+' мм';paintRange(cell);
+    $('valCell').textContent=cell.value+' мм';$('cellNow').textContent=cell.value+' ММ';paintRange(cell);
     clearTimeout(deb);deb=setTimeout(()=>{cellStep=+cell.value/1000;rebuildNow();},220);
   });
   const size=$('rngSize');paintRange(size);
   size.addEventListener('input',()=>{
     sizeMult=+size.value/100;
-    if(cloud)cloud.mat.size=cloud.cell*sizeMult;
-    if(fade){fade.old.mat.size=fade.old.cell*sizeMult;fade.nu.mat.size=fade.nu.cell*sizeMult;}
+    if(cloud)applySize(cloud.mat,cloud.cell);
+    if(fade){applySize(fade.old.mat,fade.old.cell);applySize(fade.nu.mat,fade.nu.cell);}
     $('valSize').textContent=size.value+'%';paintRange(size);
   });
   $('btnGLB').addEventListener('click',exportGLB);
@@ -837,6 +1484,8 @@ async function init(){
     initThree();
     bootStep('КАРКАС ПО РЕФЕРЕНСУ…',45);await raf();
     buildCharacter();
+    bootStep('ВЕКТОРНЫЙ РЕФЕРЕНС…',60);await raf();
+    REF.canvas=renderProceduralReference();
     bootStep('ПОДГОТОВКА ПРОХОДОВ…',80);await raf();
     bindUI();
     forceMode('tpose');
@@ -854,6 +1503,7 @@ window.addEventListener('resize',()=>{
   if(!renderer)return;
   camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
+  updateSplatScale();
 });
 init();
 </script>
