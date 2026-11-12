@@ -56,6 +56,7 @@ button:focus-visible,input:focus-visible{outline:1px solid var(--gas);outline-of
 
 .modes{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
 .modes.two{grid-template-columns:repeat(2,1fr)}
+.modes.three{grid-template-columns:repeat(3,1fr)}
 .mode{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 7px;border:1px solid var(--line2);border-radius:4px;background:rgba(200,194,182,.03);transition:.15s}
 .mode b{font-family:var(--disp);font-weight:500;font-size:10.5px;letter-spacing:.08em}
 .mode small{font-size:8px;color:var(--muted)}
@@ -225,11 +226,13 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
 
     <div class="sec">
       <div class="sec-h"><i>04</i>РЕНДЕР</div>
-      <div class="modes two">
-        <button class="mode rmode active" data-rmode="surface"><b>СЛИЯНИЕ</b><small>монолит</small></button>
+      <div class="modes three">
+        <button class="mode rmode active" data-rmode="mesh"><b>СЕТКА</b><small>плоскости</small></button>
+        <button class="mode rmode" data-rmode="surface"><b>СЛИЯНИЕ</b><small>монолит</small></button>
         <button class="mode rmode" data-rmode="points"><b>ТОЧКИ</b><small>облако</small></button>
       </div>
-      <p class="note"><b>Слияние (этап 2):</b> узлы сетки сливаются шейдером в монолитную поверхность — сплэты по нормалям рельефа, спекуляр и кант-подсветка, туман сцены.</p>
+      <button class="rebuild" id="btnWire">ЛИНИИ СЕТКИ: ВКЛ</button>
+      <p class="note"><b>Сетка:</b> соседние узлы соединяются линиями, каждые 3 точки образуют треугольную плоскость — передняя и задняя оболочки плюс стены по границе силуэта = монолитный меш. Слияние и облако точек доступны как режимы.</p>
     </div>
 
   </div>
@@ -899,45 +902,52 @@ function updateSplatScale(){
   if(fade)list.push(fade.old.mat,fade.nu.mat);
   for(const m of list)if(m.uniforms&&m.uniforms.uScale)m.uniforms.uScale.value=s;
 }
-function swapCloudMaterial(c){
-  const old=c.mat;
-  c.mat=makeMaterial(c.cell);
-  const inFade=fade&&(fade.old===c||fade.nu===c);
-  const fo=inFade?clamp(fade.t/fade.dur,0,1):0;
-  setMatOpacity(c.mat,inFade?(c===fade.nu?fo:1-fo):(old.opacity||1));
-  for(const p of c.points)p.material=c.mat;
-  old.dispose();
+function setCloudOpacity(c,v){
+  setMatOpacity(c.mat,v);
+  for(const m of c.meshMats)m.opacity=v;
+}
+function applyRenderMode(c){
+  const meshMode=state.renderMode==='mesh';
+  for(const p of c.points)p.visible=!meshMode;
+  for(const m of c.meshes)m.visible=meshMode;
+  for(const w of c.wires)w.visible=meshMode&&state.wire;
 }
 function setRenderMode(m){
   if(state.renderMode===m)return;
   state.renderMode=m;
   document.querySelectorAll('.rmode').forEach(b=>b.classList.toggle('active',b.dataset.rmode===m));
-  if(cloud)swapCloudMaterial(cloud);
-  if(fade){swapCloudMaterial(fade.old);swapCloudMaterial(fade.nu);}
-  toast(m==='surface'?'Слияние: монолитная поверхность':'Режим облака точек');
+  if(cloud)applyRenderMode(cloud);
+  if(fade){applyRenderMode(fade.old);applyRenderMode(fade.nu);}
+  toast(m==='mesh'?'Сетка: 3 точки = плоскость':m==='surface'?'Слияние: монолитная поверхность':'Режим облака точек');
 }
 function disposeCloud(c){
   if(!c)return;
   for(const p of c.points){if(p.parent)p.parent.remove(p);p.geometry.dispose();}
+  for(const m of c.meshes){if(m.parent)m.parent.remove(m);m.geometry.dispose();}
+  for(const w of c.wires){if(w.parent)w.parent.remove(w);}
   c.mat.dispose();
+  for(const m of c.meshMats)m.dispose();
+  for(const m of c.wireMats)m.dispose();
 }
 function finishFade(){
   if(!fade)return;
   disposeCloud(fade.old);
-  setMatOpacity(fade.nu.mat,1);fade.nu.mat.depthWrite=true;
+  setCloudOpacity(fade.nu,1);fade.nu.mat.depthWrite=true;
+  for(const m of fade.nu.meshMats)m.depthWrite=true;
   fade=null;
 }
 function setCloud(nu,fadeDur=0.6){
   finishFade();
   const old=cloud;cloud=nu;
   if(old&&fadeDur>0){fade={old,nu,t:0,dur:fadeDur};old.mat.depthWrite=false;nu.mat.depthWrite=false;}
-  else{setMatOpacity(nu.mat,1);nu.mat.depthWrite=true;disposeCloud(old);}
+  else{setCloudOpacity(nu,1);nu.mat.depthWrite=true;for(const m of nu.meshMats)m.depthWrite=true;disposeCloud(old);}
+  applyRenderMode(nu);
   updateCount();
 }
 function updateFade(dt){
   if(!fade)return;
   fade.t+=dt;const u=clamp(fade.t/fade.dur,0,1),e=u*u*(3-2*u);
-  setMatOpacity(fade.nu.mat,e);setMatOpacity(fade.old.mat,1-e);
+  setCloudOpacity(fade.nu,e);setCloudOpacity(fade.old,1-e);
   if(u>=1)finishFade();
 }
 function updateCount(){
@@ -945,18 +955,25 @@ function updateCount(){
   $('pointCount').textContent=n.toLocaleString('ru-RU');
   $('telPts').textContent=n.toLocaleString('ru-RU');
 }
-/* плотная векторная сетка узлов из карты рельефа референса */
+/* плотная векторная сетка узлов → точки + треугольные плоскости (3 точки = плоскость) */
 async function buildCloud(step,onProg){
   const prog=onProg||(()=>{});
   if(!REF.ready){
     prog(0.02,'АНАЛИЗ РЕФЕРЕНСА…');
     await analyzeReference(p=>prog(0.02+p*0.2,'АНАЛИЗ РЕФЕРЕНСА…'));
   }
-  prog(0.25,'ВЕКТОРНАЯ СЕТКА…');
+  prog(0.25,'ВЕКТОРНЫЕ УЗЛЫ…');
   applyPose(ZERO);charRoot.updateMatrixWorld(true);
   const W=REF.W,H=REF.H,data=REF.data,mask=REF.mask,depth=REF.depth,
         edge=REF.edge,dist=REF.dist,region=REF.region,
         nx=REF.nx,ny=REF.ny,nz=REF.nz;
+  const WW=REF.worldW;
+  const colsX=Math.round(WW/step),colsY=Math.round(REF_H/step);
+  const NV=colsX*colsY;
+  const nValid=new Uint8Array(NV),nCore=new Uint8Array(NV),nBone=new Uint8Array(NV);
+  const nZf=new Float32Array(NV),nZb=new Float32Array(NV);
+  const nCr=new Float32Array(NV),nCg=new Float32Array(NV),nCb=new Float32Array(NV);
+  const nNx=new Float32Array(NV),nNy=new Float32Array(NV),nNz=new Float32Array(NV);
   const segByName={};
   for(const[n,p]of RIG_DEF){
     if(!p)continue;
@@ -964,20 +981,13 @@ async function buildCloud(step,onProg){
     const b=rig[p].node.getWorldPosition(new THREE.Vector3());
     segByName[n]={ax:a.x,ay:a.y,az:a.z,bx:b.x,by:b.y,bz:b.z};
   }
-  const byBone=new Map();
-  const getBuf=name=>{
-    let o=byBone.get(name);
-    if(!o){o={p:[],c:[],n:[]};byBone.set(name,o);}
-    return o;
-  };
+  const boneNames=POSE_NODES.slice();
+  const BONE_IDX=new Map();boneNames.forEach((n,k)=>BONE_IDX.set(n,k));
   const locals=new Map();
   for(const name of POSE_NODES)locals.set(name,new THREE.Matrix4().copy(rig[name].node.matrixWorld).invert());
   const light=new THREE.Vector3(0.42,0.35,0.84).normalize();
-  const WW=REF.worldW;
-  const colsX=Math.round(WW/step),colsY=Math.round(REF_H/step);
-  const rng=mulberry32(47);
   const tau=Math.max(4,W*0.035);
-  let total=0;
+  /* фаза 1 · векторные узлы сетки: цвет, Z-рельеф, нормаль, кость */
   for(let gy=0;gy<colsY;gy++){
     const wy=(gy+0.5)*step;
     const py=Math.round((1-wy/REF_H)*(H-1));
@@ -987,70 +997,196 @@ async function buildCloud(step,onProg){
       const px=Math.round((wx/WW+0.5)*(W-1));
       const i=py*W+px;
       if(!mask[i])continue;
+      const ni=gy*colsX+gx;
       const reg=region[i]||REGION.TORSO;
       const d=depth[i],ex=edge[i];
       const sc=REGION_SCALE[reg]||0.13;
-      const zf=ex*0.012*(reg===REGION.CLOAK?1.5:1);
-      const x=wx+(rng()-0.5)*step*0.3;
-      const y=wy+(rng()-0.5)*step*0.3;
+      const zf=d*sc+ex*0.012*(reg===REGION.CLOAK?1.5:1);
+      let cands=REGION_BONES[reg]||['Chest'];
+      if(reg===REGION.FEET)cands=wx>0?REGION_BONES[REGION.LEG_L]:REGION_BONES[REGION.LEG_R];
+      let best='Chest',bd=1e9;
+      for(const bn of cands){
+        const sgm=segByName[bn];if(!sgm)continue;
+        const dx=sgm.bx-sgm.ax,dy=sgm.by-sgm.ay,dz=sgm.bz-sgm.az;
+        const t=clamp(((wx-sgm.ax)*dx+(wy-sgm.ay)*dy+(zf-sgm.az)*dz)/(dx*dx+dy*dy+dz*dz||1),0,1);
+        const qx=sgm.ax+dx*t-wx,qy=sgm.ay+dy*t-wy,qz=sgm.az+dz*t-zf;
+        const q=qx*qx+qy*qy+qz*qz;
+        if(q<bd){bd=q;best=bn;}
+      }
       const o=i*4;
-      const cr=Math.pow(data[o]/255,2.2),cg=Math.pow(data[o+1]/255,2.2),cb=Math.pow(data[o+2]/255,2.2);
       const nX=nx[i],nY=ny[i],nZ=nz[i]||1;
       const ndl=Math.max(0,nX*light.x+nY*light.y+nZ*light.z);
       const shade=0.42+0.58*ndl;
-      let bones=REGION_BONES[reg]||['Chest'];
-      if(reg===REGION.FEET)bones=wx>0?REGION_BONES[REGION.LEG_L]:REGION_BONES[REGION.LEG_R];
-      const pick=z=>{
-        let best=null,bd=1e9;
-        for(const bn of bones){
-          const s=segByName[bn];if(!s)continue;
-          const dx=s.bx-s.ax,dy=s.by-s.ay,dz=s.bz-s.az;
-          const t=clamp(((x-s.ax)*dx+(y-s.ay)*dy+(z-s.az)*dz)/(dx*dx+dy*dy+dz*dz||1),0,1);
-          const qx=s.ax+dx*t-x,qy=s.ay+dy*t-y,qz=s.az+dz*t-z;
-          const q=qx*qx+qy*qy+qz*qz;
-          if(q<bd){bd=q;best=bn;}
-        }
-        return best;
-      };
-      const emit=(z,mul,nx2,ny2,nz2)=>{
-        const bn=pick(z);
-        if(!bn)return;
-        const buf=getBuf(bn);
-        buf.p.push(x,y,z);
-        buf.c.push(Math.min(1,cr*shade*mul),Math.min(1,cg*shade*mul),Math.min(1,cb*shade*mul));
-        buf.n.push(nx2,ny2,nz2);
-        total++;
-      };
-      emit(d*sc+zf,1,nX,nY,nZ);
-      if(d>0.02)emit(-(d*sc*0.82+zf*0.5),0.55,-nX,-nY,-nZ);
-      if(dist[i]>tau*1.6&&((gx+gy)&1)===0)emit(0,0.4,0,0,1);
+      nValid[ni]=1;
+      nZf[ni]=zf;
+      nZb[ni]=-(d*sc*0.82+zf*0.5);
+      nCr[ni]=Math.pow(data[o]/255,2.2)*shade;
+      nCg[ni]=Math.pow(data[o+1]/255,2.2)*shade;
+      nCb[ni]=Math.pow(data[o+2]/255,2.2)*shade;
+      nNx[ni]=nX;nNy[ni]=nY;nNz[ni]=nZ;
+      nBone[ni]=BONE_IDX.has(best)?BONE_IDX.get(best):BONE_IDX.get('Chest');
+      nCore[ni]=dist[i]>tau*1.6?1:0;
     }
     if((gy&15)===0){
-      prog(0.25+0.75*gy/colsY,`ВЕКТОРНАЯ СЕТКА · ${Math.round(gy/colsY*100)}%`);
+      prog(0.25+0.35*gy/colsY,`ВЕКТОРНЫЕ УЗЛЫ · ${Math.round(gy/colsY*100)}%`);
       await raf();
+    }
+  }
+  /* фаза 2 · облако точек из узлов */
+  prog(0.6,'ОБЛАКО ТОЧЕК…');
+  const byBone=new Map();
+  const getBuf=k=>{let o2=byBone.get(k);if(!o2){o2={p:[],c:[],n:[]};byBone.set(k,o2);}return o2;};
+  const rng=mulberry32(47);
+  let total=0;
+  for(let gy=0;gy<colsY;gy++)for(let gx=0;gx<colsX;gx++){
+    const ni=gy*colsX+gx;
+    if(!nValid[ni])continue;
+    const x=(gx+0.5)*step-WW/2+(rng()-0.5)*step*0.3;
+    const y=(gy+0.5)*step+(rng()-0.5)*step*0.3;
+    const cr=nCr[ni],cg=nCg[ni],cb=nCb[ni];
+    const k2=nBone[ni],buf=getBuf(k2);
+    buf.p.push(x,y,nZf[ni]);
+    buf.c.push(cr,cg,cb);
+    buf.n.push(nNx[ni],nNy[ni],nNz[ni]);
+    buf.p.push(x,y,nZb[ni]);
+    buf.c.push(cr*0.55,cg*0.55,cb*0.55);
+    buf.n.push(-nNx[ni],-nNy[ni],-nNz[ni]);
+    total+=2;
+    if(nCore[ni]&&((gx+gy)&1)===0){
+      buf.p.push(x,y,0);
+      buf.c.push(cr*0.4,cg*0.4,cb*0.4);
+      buf.n.push(0,0,1);
+      total++;
     }
   }
   const mat=makeMaterial(step);setMatOpacity(mat,0);mat.depthWrite=false;
   const points=[];
-  for(const[name,buf]of byBone){
+  for(const[k2,buf]of byBone){
     if(!buf.p.length)continue;
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(buf.p,3));
     g.setAttribute('color',new THREE.Float32BufferAttribute(buf.c,3));
     g.setAttribute('normal',new THREE.Float32BufferAttribute(buf.n,3));
-    const M=locals.get(name),arr=g.attributes.position.array,E=M.elements;
-    for(let k2=0;k2<arr.length;k2+=3){
-      const x=arr[k2],y=arr[k2+1],z=arr[k2+2];
-      arr[k2]=E[0]*x+E[4]*y+E[8]*z+E[12];
-      arr[k2+1]=E[1]*x+E[5]*y+E[9]*z+E[13];
-      arr[k2+2]=E[2]*x+E[6]*y+E[10]*z+E[14];
+    const M=locals.get(boneNames[k2]),arr=g.attributes.position.array,E=M.elements;
+    for(let v=0;v<arr.length;v+=3){
+      const x=arr[v],y=arr[v+1],z=arr[v+2];
+      arr[v]=E[0]*x+E[4]*y+E[8]*z+E[12];
+      arr[v+1]=E[1]*x+E[5]*y+E[9]*z+E[13];
+      arr[v+2]=E[2]*x+E[6]*y+E[10]*z+E[14];
     }
     g.computeBoundingSphere();
-    const pts=new THREE.Points(g,mat);pts.name=name+'_scan';
-    rig[name].node.add(pts);points.push(pts);
+    const pts=new THREE.Points(g,mat);pts.name=boneNames[k2]+'_scan';
+    rig[boneNames[k2]].node.add(pts);points.push(pts);
+  }
+  /* фаза 3 · треугольные плоскости: соседние узлы → 3 точки = плоскость */
+  prog(0.72,'ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ…');
+  const chunks=new Map();
+  const getChunk=bn=>{
+    let ch=chunks.get(bn);
+    if(!ch){ch={pos:[],col:[],idx:[],mapF:new Map(),mapB:new Map()};chunks.set(bn,ch);}
+    return ch;
+  };
+  const loc3=(bn,x,y,z,out)=>{
+    const E=locals.get(bn).elements;
+    out[0]=E[0]*x+E[4]*y+E[8]*z+E[12];
+    out[1]=E[1]*x+E[5]*y+E[9]*z+E[13];
+    out[2]=E[2]*x+E[6]*y+E[10]*z+E[14];
+  };
+  const _v3=[0,0,0];
+  const addVert=(ch,mp,ni,bn,x,y,z,r,g,b)=>{
+    let k=mp.get(ni);
+    if(k===undefined){
+      loc3(bn,x,y,z,_v3);
+      k=ch.pos.length/3;
+      ch.pos.push(_v3[0],_v3[1],_v3[2]);
+      ch.col.push(r,g,b);
+      mp.set(ni,k);
+    }
+    return k;
+  };
+  const wxOf=gx=>(gx+0.5)*step-WW/2,wyOf=gy=>(gy+0.5)*step;
+  const vertF=(ch,mp,ni,bn)=>{
+    const gx=ni%colsX,gy=(ni/colsX)|0;
+    return addVert(ch,mp,ni,bn,wxOf(gx),wyOf(gy),nZf[ni],nCr[ni],nCg[ni],nCb[ni]);
+  };
+  const vertB=(ch,mp,ni,bn)=>{
+    const gx=ni%colsX,gy=(ni/colsX)|0;
+    return addVert(ch,mp,ni,bn,wxOf(gx),wyOf(gy),nZb[ni],nCr[ni]*0.55,nCg[ni]*0.55,nCb[ni]*0.55);
+  };
+  const triBones=(a,b,c)=>{
+    const set=new Set([boneNames[nBone[a]],boneNames[nBone[b]],boneNames[nBone[c]]]);
+    return[...set];
+  };
+  for(let gy=0;gy<colsY-1;gy++){
+    for(let gx=0;gx<colsX-1;gx++){
+      const a=gy*colsX+gx,b=a+1,c2=a+colsX+1,d2=a+colsX;
+      if(!(nValid[a]&&nValid[b]&&nValid[c2]&&nValid[d2]))continue;
+      for(const[t0,t1,t2]of[[a,b,c2],[a,c2,d2]]){
+        for(const bn of triBones(t0,t1,t2)){
+          const ch=getChunk(bn);
+          const i0=vertF(ch,ch.mapF,t0,bn),i1=vertF(ch,ch.mapF,t1,bn),i2=vertF(ch,ch.mapF,t2,bn);
+          ch.idx.push(i0,i1,i2);
+        }
+      }
+      for(const[t0,t1,t2]of[[a,c2,b],[a,d2,c2]]){
+        for(const bn of triBones(t0,t1,t2)){
+          const ch=getChunk(bn);
+          const i0=vertB(ch,ch.mapB,t0,bn),i1=vertB(ch,ch.mapB,t1,bn),i2=vertB(ch,ch.mapB,t2,bn);
+          ch.idx.push(i0,i1,i2);
+        }
+      }
+    }
+    if((gy&31)===0){
+      prog(0.72+0.2*gy/colsY,`ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ · ${Math.round(gy/colsY*100)}%`);
+      await raf();
+    }
+  }
+  /* стены по границе силуэта — замыкание оболочек в монолит */
+  const wall=(a,b)=>{
+    const set=new Set([boneNames[nBone[a]],boneNames[nBone[b]]]);
+    for(const bn of set){
+      const ch=getChunk(bn);
+      const f0=vertF(ch,ch.mapF,a,bn),f1=vertF(ch,ch.mapF,b,bn);
+      const b1=vertB(ch,ch.mapB,b,bn),b0=vertB(ch,ch.mapB,a,bn);
+      ch.idx.push(f0,f1,b1,f0,b1,b0);
+    }
+  };
+  for(let gy=0;gy<colsY;gy++)for(let gx=0;gx<colsX-1;gx++){
+    const a=gy*colsX+gx,b=a+1;
+    if(!(nValid[a]&&nValid[b]))continue;
+    const above=gy+1<colsY&&nValid[a+colsX]&&nValid[b+colsX];
+    const below=gy>0&&nValid[a-colsX]&&nValid[b-colsX];
+    if(above&&below)continue;
+    wall(a,b);
+  }
+  for(let gx=0;gx<colsX;gx++)for(let gy=0;gy<colsY-1;gy++){
+    const a=gy*colsX+gx,b=a+colsX;
+    if(!(nValid[a]&&nValid[b]))continue;
+    const lft=gx>0&&nValid[a-1]&&nValid[b-1];
+    const rgt=gx+1<colsX&&nValid[a+1]&&nValid[b+1];
+    if(lft&&rgt)continue;
+    wall(a,b);
+  }
+  /* сборка мешей по костям */
+  prog(0.95,'СБОРКА МЕША…');await raf();
+  const meshes=[],wires=[],meshMats=[],wireMats=[];
+  for(const[bn,ch]of chunks){
+    if(!ch.idx.length)continue;
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(ch.pos,3));
+    g.setAttribute('color',new THREE.Float32BufferAttribute(ch.col,3));
+    g.setIndex(ch.idx);
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+    const mm=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,transparent:true,opacity:0});
+    const ms=new THREE.Mesh(g,mm);ms.name=bn+'_mesh';ms.visible=false;
+    rig[bn].node.add(ms);meshes.push(ms);meshMats.push(mm);
+    const wm=new THREE.MeshBasicMaterial({wireframe:true,color:0xe09a55,transparent:true,opacity:0.22,depthWrite:false});
+    const wire=new THREE.Mesh(g,wm);wire.name=bn+'_wire';wire.visible=false;
+    rig[bn].node.add(wire);wires.push(wire);wireMats.push(wm);
   }
   prog(1,'ГОТОВО');
-  return {points,mat,count:total,cell:step};
+  return {points,meshes,wires,meshMats,wireMats,mat,count:total,cell:step};
 }
 
 /* ---------- последовательная сборка по референсу ---------- */
@@ -1060,10 +1196,10 @@ const PASSES=[
   {cell:0.003,view:'back',label:'BACK',desc:'контуры, складки, рельеф'},
   {cell:0.002,view:'right',label:'RIGHT SIDE',desc:'финальная плотность 2 мм'}
 ];
-let seqToken=0,state={mode:'idle',blend:1,paused:false,speed:1,poseTime:0,exporting:false,building:false,busy:false,renderMode:'surface'};
+let seqToken=0,state={mode:'idle',blend:1,paused:false,speed:1,poseTime:0,exporting:false,building:false,busy:false,renderMode:'mesh',wire:true};
 function setControlsEnabled(on){
   document.querySelectorAll('.mode').forEach(b=>b.disabled=!on);
-  ['rngSpeed','rngCell','rngSize','btnPlay','btnCam','btnSequence','btnGLB','btnOBJ','btnRefLoad','btnRefReset'].forEach(id=>$(id).disabled=!on);
+  ['rngSpeed','rngCell','rngSize','btnPlay','btnCam','btnSequence','btnGLB','btnOBJ','btnRefLoad','btnRefReset','btnWire'].forEach(id=>$(id).disabled=!on);
 }
 function tweenCamTo(v,dur=1.1){
   camTween={t:0,dur,fp:camera.position.clone(),tp:v.pos.clone(),ft:controls.target.clone(),tt:v.tgt.clone()};
@@ -1258,6 +1394,12 @@ async function rebuildNow(){
 function bindUI(){
   document.querySelectorAll('.mode[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
   document.querySelectorAll('.rmode').forEach(b=>b.addEventListener('click',()=>setRenderMode(b.dataset.rmode)));
+  $('btnWire').addEventListener('click',()=>{
+    state.wire=!state.wire;
+    $('btnWire').textContent='ЛИНИИ СЕТКИ: '+(state.wire?'ВКЛ':'ВЫКЛ');
+    if(cloud)applyRenderMode(cloud);
+    if(fade){applyRenderMode(fade.old);applyRenderMode(fade.nu);}
+  });
   $('btnPlay').addEventListener('click',togglePause);
   $('btnCam').addEventListener('click',()=>tweenCamTo(CAM_HOME,0.9));
   $('btnSequence').addEventListener('click',runSequence);
