@@ -55,6 +55,7 @@ button:focus-visible,input:focus-visible{outline:1px solid var(--gas);outline-of
 .sec-h::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
 
 .modes{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.modes.two{grid-template-columns:repeat(2,1fr)}
 .mode{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 7px;border:1px solid var(--line2);border-radius:4px;background:rgba(200,194,182,.03);transition:.15s}
 .mode b{font-family:var(--disp);font-weight:500;font-size:10.5px;letter-spacing:.08em}
 .mode small{font-size:8px;color:var(--muted)}
@@ -220,6 +221,15 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
         <span class="t"><b>Скачать .OBJ</b><small>облако точек, статично</small></span><span class="spin"></span>
       </button>
       <p class="note">GLB: иерархия костей + 3 клипа (30 fps). Unity: glTFast / UniGLTF.</p>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h"><i>04</i>РЕНДЕР</div>
+      <div class="modes two">
+        <button class="mode rmode active" data-rmode="surface"><b>СЛИЯНИЕ</b><small>монолит</small></button>
+        <button class="mode rmode" data-rmode="points"><b>ТОЧКИ</b><small>облако</small></button>
+      </div>
+      <p class="note"><b>Слияние (этап 2):</b> узлы сетки сливаются шейдером в монолитную поверхность — сплэты по нормалям рельефа, спекуляр и кант-подсветка, туман сцены.</p>
     </div>
 
   </div>
@@ -807,6 +817,105 @@ function drawRefThumb(){
 
 /* ---------- облака точек + плавная замена проходов ---------- */
 let cloud=null,fade=null,cellStep=0.003,sizeMult=1.10;
+/* ---------- этап 2 · шейдерное слияние: сплэты → монолитная поверхность ---------- */
+const SPLAT_OVERLAP=2.2;
+function makeSplat(){
+  return new THREE.ShaderMaterial({
+    uniforms:{
+      uSize:{value:0.01},
+      uScale:{value:1},
+      uOpacity:{value:0},
+      uLight:{value:new THREE.Vector3(0.42,0.35,0.84).normalize()},
+      uFogColor:{value:new THREE.Color(0x0d0e11)},
+      uFogDensity:{value:0.05}
+    },
+    vertexColors:true,
+    transparent:true,
+    depthWrite:true,
+    vertexShader:`
+      uniform float uSize;
+      uniform float uScale;
+      varying vec3 vColor;
+      varying vec3 vNormal;
+      varying vec3 vViewPos;
+      varying float vFogDepth;
+      void main(){
+        vColor=color;
+        vNormal=normalize(normalMatrix*normal);
+        vec4 mv=modelViewMatrix*vec4(position,1.0);
+        vViewPos=mv.xyz;
+        vFogDepth=-mv.z;
+        gl_PointSize=uSize*uScale/max(0.1,-mv.z);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`
+      uniform float uOpacity;
+      uniform vec3 uLight;
+      uniform vec3 uFogColor;
+      uniform float uFogDensity;
+      varying vec3 vColor;
+      varying vec3 vNormal;
+      varying vec3 vViewPos;
+      varying float vFogDepth;
+      void main(){
+        vec2 c=gl_PointCoord*2.0-1.0;
+        float r2=dot(c,c);
+        if(r2>1.0) discard;
+        vec3 N=normalize(vNormal);
+        vec3 V=normalize(-vViewPos);
+        vec3 L=normalize(uLight);
+        float diff=max(dot(N,L),0.0);
+        vec3 H=normalize(L+V);
+        float spec=pow(max(dot(N,H),0.0),26.0)*0.16;
+        float rim=pow(1.0-max(dot(N,V),0.0),3.0)*0.20;
+        vec3 col=vColor*(0.78+0.22*diff)+vec3(spec)+rim*vec3(0.55,0.65,0.9);
+        float fog=1.0-exp(-uFogDensity*uFogDensity*vFogDepth*vFogDepth);
+        col=mix(col,uFogColor,fog);
+        gl_FragColor=vec4(col,uOpacity);
+      }`
+  });
+}
+function makeMaterial(cell){
+  if(state.renderMode==='surface'){
+    const m=makeSplat();
+    m.uniforms.uSize.value=cell*sizeMult*SPLAT_OVERLAP;
+    m.uniforms.uScale.value=splatScale();
+    return m;
+  }
+  const m=pointMat.clone();m.size=cell*sizeMult;return m;
+}
+function splatScale(){return renderer.domElement.height*0.5;}
+function setMatOpacity(mat,v){
+  mat.opacity=v;
+  if(mat.uniforms&&mat.uniforms.uOpacity)mat.uniforms.uOpacity.value=v;
+}
+function applySize(mat,cell){
+  if(mat.uniforms&&mat.uniforms.uSize)mat.uniforms.uSize.value=cell*sizeMult*SPLAT_OVERLAP;
+  else mat.size=cell*sizeMult;
+}
+function updateSplatScale(){
+  const s=splatScale(),list=[];
+  if(cloud)list.push(cloud.mat);
+  if(fade)list.push(fade.old.mat,fade.nu.mat);
+  for(const m of list)if(m.uniforms&&m.uniforms.uScale)m.uniforms.uScale.value=s;
+}
+function swapCloudMaterial(c){
+  const old=c.mat;
+  c.mat=makeMaterial(c.cell);
+  const inFade=fade&&(fade.old===c||fade.nu===c);
+  const fo=inFade?clamp(fade.t/fade.dur,0,1):0;
+  setMatOpacity(c.mat,inFade?(c===fade.nu?fo:1-fo):(old.opacity||1));
+  for(const p of c.points)p.material=c.mat;
+  old.dispose();
+}
+function setRenderMode(m){
+  if(state.renderMode===m)return;
+  state.renderMode=m;
+  document.querySelectorAll('.rmode').forEach(b=>b.classList.toggle('active',b.dataset.rmode===m));
+  if(cloud)swapCloudMaterial(cloud);
+  if(fade){swapCloudMaterial(fade.old);swapCloudMaterial(fade.nu);}
+  toast(m==='surface'?'Слияние: монолитная поверхность':'Режим облака точек');
+}
 function disposeCloud(c){
   if(!c)return;
   for(const p of c.points){if(p.parent)p.parent.remove(p);p.geometry.dispose();}
@@ -815,20 +924,20 @@ function disposeCloud(c){
 function finishFade(){
   if(!fade)return;
   disposeCloud(fade.old);
-  fade.nu.mat.opacity=1;fade.nu.mat.depthWrite=true;
+  setMatOpacity(fade.nu.mat,1);fade.nu.mat.depthWrite=true;
   fade=null;
 }
 function setCloud(nu,fadeDur=0.6){
   finishFade();
   const old=cloud;cloud=nu;
   if(old&&fadeDur>0){fade={old,nu,t:0,dur:fadeDur};old.mat.depthWrite=false;nu.mat.depthWrite=false;}
-  else{nu.mat.opacity=1;nu.mat.depthWrite=true;disposeCloud(old);}
+  else{setMatOpacity(nu.mat,1);nu.mat.depthWrite=true;disposeCloud(old);}
   updateCount();
 }
 function updateFade(dt){
   if(!fade)return;
   fade.t+=dt;const u=clamp(fade.t/fade.dur,0,1),e=u*u*(3-2*u);
-  fade.nu.mat.opacity=e;fade.old.mat.opacity=1-e;
+  setMatOpacity(fade.nu.mat,e);setMatOpacity(fade.old.mat,1-e);
   if(u>=1)finishFade();
 }
 function updateCount(){
@@ -921,7 +1030,7 @@ async function buildCloud(step,onProg){
       await raf();
     }
   }
-  const mat=pointMat.clone();mat.size=step*sizeMult;mat.opacity=0;mat.depthWrite=false;
+  const mat=makeMaterial(step);setMatOpacity(mat,0);mat.depthWrite=false;
   const points=[];
   for(const[name,buf]of byBone){
     if(!buf.p.length)continue;
@@ -951,7 +1060,7 @@ const PASSES=[
   {cell:0.003,view:'back',label:'BACK',desc:'контуры, складки, рельеф'},
   {cell:0.002,view:'right',label:'RIGHT SIDE',desc:'финальная плотность 2 мм'}
 ];
-let seqToken=0,state={mode:'idle',blend:1,paused:false,speed:1,poseTime:0,exporting:false,building:false,busy:false};
+let seqToken=0,state={mode:'idle',blend:1,paused:false,speed:1,poseTime:0,exporting:false,building:false,busy:false,renderMode:'surface'};
 function setControlsEnabled(on){
   document.querySelectorAll('.mode').forEach(b=>b.disabled=!on);
   ['rngSpeed','rngCell','rngSize','btnPlay','btnCam','btnSequence','btnGLB','btnOBJ','btnRefLoad','btnRefReset'].forEach(id=>$(id).disabled=!on);
@@ -1084,7 +1193,7 @@ function toast(msg,type='ok'){
 function paintRange(el){const p=(el.value-el.min)/(el.max-el.min)*100;el.style.background=`linear-gradient(90deg,var(--rust) ${p}%,rgba(200,194,182,.13) ${p}%)`;}
 function forceMode(m){
   copyPose(poseMix,blendFrom);state.blend=0;state.mode=m;
-  document.querySelectorAll('.mode').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  document.querySelectorAll('.mode[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
   $('telMode').textContent=m.toUpperCase();
 }
 function setMode(m){if(!state.building)forceMode(m);}
@@ -1147,7 +1256,8 @@ async function rebuildNow(){
   state.busy=false;$('rngCell').disabled=false;
 }
 function bindUI(){
-  document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+  document.querySelectorAll('.mode[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+  document.querySelectorAll('.rmode').forEach(b=>b.addEventListener('click',()=>setRenderMode(b.dataset.rmode)));
   $('btnPlay').addEventListener('click',togglePause);
   $('btnCam').addEventListener('click',()=>tweenCamTo(CAM_HOME,0.9));
   $('btnSequence').addEventListener('click',runSequence);
@@ -1174,8 +1284,8 @@ function bindUI(){
   const size=$('rngSize');paintRange(size);
   size.addEventListener('input',()=>{
     sizeMult=+size.value/100;
-    if(cloud)cloud.mat.size=cloud.cell*sizeMult;
-    if(fade){fade.old.mat.size=fade.old.cell*sizeMult;fade.nu.mat.size=fade.nu.cell*sizeMult;}
+    if(cloud)applySize(cloud.mat,cloud.cell);
+    if(fade){applySize(fade.old.mat,fade.old.cell);applySize(fade.nu.mat,fade.nu.cell);}
     $('valSize').textContent=size.value+'%';paintRange(size);
   });
   $('btnGLB').addEventListener('click',exportGLB);
@@ -1251,6 +1361,7 @@ window.addEventListener('resize',()=>{
   if(!renderer)return;
   camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
+  updateSplatScale();
 });
 init();
 </script>
