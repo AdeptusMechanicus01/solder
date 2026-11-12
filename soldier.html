@@ -857,12 +857,11 @@ function updateCount(){
   $('pointCount').textContent=n.toLocaleString('ru-RU');
   $('telPts').textContent=n.toLocaleString('ru-RU');
 }
-/* ---------- ЭТАП 4 · сращивание 4 видов в 3D: воксельное выдавливание → точки → плоскости ---------- */
+/* ---------- ЭТАП 4 · лёгкое облако точек из видов (WebGL gl.POINTS) + 2.5D-сетка ---------- */
 async function buildCloud(step,onProg){
   const prog=onProg||(()=>{});
-  const act=VIEW_DEFS.filter(d=>views[d.key].ready||views[d.key].canvas);
+  const act=VIEW_DEFS.filter(d=>views[d.key].canvas);
   if(!act.length)throw new Error('Нет референсов');
-  /* анализ ещё не разобранных видов (пиксели → векторы → выдавливание по яркости) */
   let done=0;
   for(const d of VIEW_DEFS){
     const v=views[d.key];
@@ -870,68 +869,9 @@ async function buildCloud(step,onProg){
     if(!v.ready)await analyzeView(v,p=>prog(0.02+(done+p)/act.length*0.18,`АНАЛИЗ ${d.label}…`));
     done++;
   }
-  prog(0.2,'ВЕКТОРНОЕ ВЫДАВЛИВАНИЕ…');
+  prog(0.2,'ОБЛАКО ТОЧЕК…');
   applyPose(ZERO);charRoot.updateMatrixWorld(true);
   const D=depthScale;
-  const f=views.front.canvas?views.front:null,b=views.back.canvas?views.back:null,
-        l=views.left.canvas?views.left:null,r=views.right.canvas?views.right:null;
-  const WWx=Math.max(f?f.WW:0,b?b.WW:0)||2*D+0.2;
-  const WWz=Math.max(l?l.WW:0,r?r.WW:0)||WWx;
-  const WW=WWx;
-  const colsX=Math.max(2,Math.round(WWx/step)),colsY=Math.max(2,Math.round(REF_H/step)),colsZ=Math.max(2,Math.round(WWz/step));
-  const NV=colsX*colsY*colsZ;
-  const occ=new Uint8Array((NV+7)>>3);
-  const setBit=i=>{occ[i>>3]|=1<<(i&7);};
-  const getBit=i=>(occ[i>>3]>>(i&7))&1;
-  const bIdx=(xi,yi,zi)=>(xi*colsY+yi)*colsZ+zi;
-  const colZ0=new Int16Array(colsX*colsY).fill(-1);
-  const colZ1=new Int16Array(colsX*colsY).fill(-1);
-  const pxOf=(v2,u,sign)=>clamp(Math.round((0.5+sign*u/v2.WW)*(v2.W-1)),0,v2.W-1);
-  const pyOf=(v2,y)=>clamp(Math.round((1-y/REF_H)*(v2.H-1)),0,v2.H-1);
-  /* фаза 1 · воксельное выдавливание: фронт/зад режут по z (яркость = глубина выступа),
-     лево/право подрезают по x */
-  for(let xi=0;xi<colsX;xi++){
-    const x=(xi+0.5)*step-WWx/2;
-    for(let yi=0;yi<colsY;yi++){
-      const y=(yi+0.5)*step;
-      const ci=yi*colsX+xi;
-      let hi=D,lo=-D;
-      if(f){
-        const i=pyOf(f,y)*f.W+pxOf(f,x,1);
-        if(!f.mask[i])continue;
-        hi=Math.min(hi,f.coef[i]*D);
-      }
-      if(b){
-        const i=pyOf(b,y)*b.W+pxOf(b,x,-1);
-        if(!b.mask[i])continue;
-        lo=Math.max(lo,-b.coef[i]*D);
-      }
-      if(f&&!b)lo=-hi*0.82;
-      else if(b&&!f)hi=-lo*0.82;
-      let zi0=Math.max(0,Math.ceil((lo+WWz/2)/step-0.5));
-      let zi1=Math.min(colsZ-1,Math.floor((hi+WWz/2)/step-0.5));
-      if(zi1<zi0)zi0=zi1=clamp(Math.round(((lo+hi)/2+WWz/2)/step-0.5),0,colsZ-1);
-      for(let zi=zi0;zi<=zi1;zi++){
-        const z=(zi+0.5)*step-WWz/2;
-        if(l){
-          const i=pyOf(l,y)*l.W+pxOf(l,z,-1);
-          if(l.mask[i]&&x>l.coef[i]*D+step)continue;
-        }
-        if(r){
-          const i=pyOf(r,y)*r.W+pxOf(r,z,1);
-          if(r.mask[i]&&x<-r.coef[i]*D-step)continue;
-        }
-        setBit(bIdx(xi,yi,zi));
-        if(colZ0[ci]<0||zi<colZ0[ci])colZ0[ci]=zi;
-        if(zi>colZ1[ci])colZ1[ci]=zi;
-      }
-    }
-    if((xi&7)===0){
-      prog(0.2+0.3*xi/colsX,`ВЫДАВЛИВАНИЕ · ${Math.round(xi/colsX*100)}%`);
-      await raf();
-    }
-  }
-  /* привязка к костям: ближайший 3D-сегмент (ZERO-поза) */
   const segByName={};
   for(const[n,p]of RIG_DEF){
     if(!p)continue;
@@ -956,63 +896,55 @@ async function buildCloud(step,onProg){
     }
     return best;
   };
-  const colorAt=(v2,u,y,sign)=>{
-    if(!v2)return null;
-    const i=pyOf(v2,y)*v2.W+pxOf(v2,u,sign);
-    if(!v2.mask[i])return null;
-    const o=i*4;
-    return[Math.pow(v2.data[o]/255,2.2),Math.pow(v2.data[o+1]/255,2.2),Math.pow(v2.data[o+2]/255,2.2)];
-  };
-  /* фаза 2 · поверхность: воксели с пустым соседом → точки (нормаль = сумма пустых направлений) */
-  prog(0.5,'ПОВЕРХНОСТЬ · ТОЧКИ…');
   const byBone=new Map();
   const getBuf=k=>{let o2=byBone.get(k);if(!o2){o2={p:[],c:[],n:[]};byBone.set(k,o2);}return o2;};
-  const CD=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-  const FALLBACK=[0.28,0.27,0.25];
   const rng=mulberry32(47);
   let total=0;
-  for(let xi=0;xi<colsX;xi++){
-    const x=(xi+0.5)*step-WWx/2;
-    for(let yi=0;yi<colsY;yi++){
-      const ci=yi*colsX+xi;
-      if(colZ1[ci]<0)continue;
-      const y=(yi+0.5)*step;
-      for(let zi=colZ0[ci];zi<=colZ1[ci];zi++){
-        if(!getBit(bIdx(xi,yi,zi)))continue;
-        let nx2=0,ny2=0,nz2=0,cr=0,cg=0,cb=0,cn=0;
-        for(let k=0;k<6;k++){
-          const dx=CD[k][0],dy=CD[k][1],dz=CD[k][2];
-          const tx=xi+dx,ty=yi+dy,tz=zi+dz;
-          const empty=tx<0||ty<0||tz<0||tx>=colsX||ty>=colsY||tz>=colsZ||!getBit(bIdx(tx,ty,tz));
-          if(!empty)continue;
-          nx2+=dx;ny2+=dy;nz2+=dz;
-          const z=(zi+0.5)*step-WWz/2;
-          let col=null;
-          if(dz===1)col=colorAt(f,x,y,1);
-          else if(dz===-1)col=colorAt(b,x,y,-1);
-          else if(dx===1)col=colorAt(l,z,y,-1);
-          else if(dx===-1)col=colorAt(r,z,y,1);
-          if(!col)col=colorAt(f,x,y,1);
-          if(!col)col=FALLBACK;
-          cr+=col[0];cg+=col[1];cb+=col[2];cn++;
-        }
-        if(!cn)continue;
-        const il=1/(Math.sqrt(nx2*nx2+ny2*ny2+nz2*nz2)||1);
-        const nX=nx2*il,nY=ny2*il,nZ=nz2*il;
-        const ndl=Math.max(0,nX*light.x+nY*light.y+nZ*light.z);
+  /* оси вида: u → (ux,uz) — горизонталь экрана, глубина → (ax,az), w → y;
+     каждый пиксель = одна точка, выдавленная по яркости вдоль оси вида */
+  const AXES={front:{ux:1,uz:0,ax:0,az:1},back:{ux:-1,uz:0,ax:0,az:-1},left:{ux:0,uz:-1,ax:1,az:0},right:{ux:0,uz:1,ax:-1,az:0}};
+  const emitView=async(v,p0,p1)=>{
+    const A=AXES[v.def.key],WW=v.WW;
+    const colsU=Math.max(2,Math.round(WW/step)),colsV=Math.max(2,Math.round(REF_H/step));
+    for(let gv=0;gv<colsV;gv++){
+      const y=(gv+0.5)*step;
+      const py=clamp(Math.round((1-y/REF_H)*(v.H-1)),0,v.H-1);
+      for(let gu=0;gu<colsU;gu++){
+        const u=(gu+0.5)*step-WW/2;
+        const pu=clamp(Math.round((0.5+v.def.sign*u/WW)*(v.W-1)),0,v.W-1);
+        const i=py*v.W+pu;
+        if(!v.mask[i])continue;
+        const cf=v.coef[i];
+        const il2=v.mask[i-1]?v.coef[i-1]:cf,ir2=v.mask[i+1]?v.coef[i+1]:cf;
+        const iu2=v.mask[i-v.W]?v.coef[i-v.W]:cf,idn=v.mask[i+v.W]?v.coef[i+v.W]:cf;
+        const du=(ir2-il2)*2.5,dv2=(idn-iu2)*2.5;
+        const nl=1/Math.sqrt(du*du+dv2*dv2+1);
+        const nu=-du*nl,nw=-dv2*nl,na=nl;
+        const depth=cf*D;
+        const uj=u+(rng()-0.5)*step*0.25,yj=y+(rng()-0.5)*step*0.25;
+        const x=A.ux*uj+A.ax*depth,z=A.uz*uj+A.az*depth;
+        const nX=A.ux*nu+A.ax*na,nZ=A.uz*nu+A.az*na;
+        const ndl=Math.max(0,nX*light.x+nw*light.y+nZ*light.z);
         const shade=0.42+0.58*ndl;
-        const z=(zi+0.5)*step-WWz/2;
-        const buf=getBuf(BONE_IDX.get(nearestBone(x,y,z))||0);
-        buf.p.push(x+(rng()-0.5)*step*0.25,y+(rng()-0.5)*step*0.25,z+(rng()-0.5)*step*0.25);
-        buf.c.push(cr/cn*shade,cg/cn*shade,cb/cn*shade);
-        buf.n.push(nX,nY,nZ);
+        const o=i*4;
+        const buf=getBuf(BONE_IDX.get(nearestBone(x,yj,z))||0);
+        buf.p.push(x,yj,z);
+        buf.c.push(Math.pow(v.data[o]/255,2.2)*shade,Math.pow(v.data[o+1]/255,2.2)*shade,Math.pow(v.data[o+2]/255,2.2)*shade);
+        buf.n.push(nX,nw,nZ);
         total++;
       }
+      if((gv&15)===0){
+        prog(p0+(p1-p0)*gv/colsV,`ОБЛАКО ТОЧЕК · ${v.def.label} · ${Math.round(gv/colsV*100)}%`);
+        await raf();
+      }
     }
-    if((xi&7)===0){
-      prog(0.5+0.25*xi/colsX,`ПОВЕРХНОСТЬ · ${Math.round(xi/colsX*100)}%`);
-      await raf();
-    }
+  };
+  let acc=0;
+  for(const d of VIEW_DEFS){
+    const v=views[d.key];
+    if(!v.canvas)continue;
+    await emitView(v,0.2+acc/act.length*0.4,0.2+(acc+1)/act.length*0.4);
+    acc++;
   }
   const mat=makeMaterial(step);setMatOpacity(mat,0);mat.depthWrite=false;
   const points=[];
@@ -1033,21 +965,44 @@ async function buildCloud(step,onProg){
     const pts=new THREE.Points(g,mat);pts.name=boneNames[k2]+'_scan';
     rig[boneNames[k2]].node.add(pts);points.push(pts);
   }
-  /* фаза 3 · треугольные плоскости из колонок: передняя/задняя оболочка + стены (3 точки = плоскость) */
-  prog(0.78,'ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ…');
+  /* лёгкая 2.5D-сетка из фронт/зад видов: 3 точки = плоскость (без вокселей) */
+  prog(0.68,'ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ…');
+  const f=views.front.canvas?views.front:null,bv=views.back.canvas?views.back:null;
+  const WW=(f?f.WW:(bv?bv.WW:2*D+0.2));
+  const colsX=Math.max(2,Math.round(WW/step)),colsY=Math.max(2,Math.round(REF_H/step));
   const nValid=new Uint8Array(colsX*colsY),nBone=new Uint8Array(colsX*colsY);
   const nZf=new Float32Array(colsX*colsY),nZb=new Float32Array(colsX*colsY);
   const nCr=new Float32Array(colsX*colsY),nCg=new Float32Array(colsX*colsY),nCb=new Float32Array(colsX*colsY);
+  const FALLBACK=[0.28,0.27,0.25];
+  const pxOf=(v2,u,sign)=>clamp(Math.round((0.5+sign*u/v2.WW)*(v2.W-1)),0,v2.W-1);
+  const pyOf=(v2,y)=>clamp(Math.round((1-y/REF_H)*(v2.H-1)),0,v2.H-1);
+  const colAt=(v2,u,y,sign)=>{
+    if(!v2)return null;
+    const i=pyOf(v2,y)*v2.W+pxOf(v2,u,sign);
+    if(!v2.mask[i])return null;
+    const o=i*4;
+    return[Math.pow(v2.data[o]/255,2.2),Math.pow(v2.data[o+1]/255,2.2),Math.pow(v2.data[o+2]/255,2.2)];
+  };
   for(let yi=0;yi<colsY;yi++)for(let xi=0;xi<colsX;xi++){
     const ci=yi*colsX+xi;
-    if(colZ1[ci]<0)continue;
+    const x=(xi+0.5)*step-WW/2,y=(yi+0.5)*step;
+    let zf=NaN,zb=NaN,col=null;
+    if(f){
+      const i=pyOf(f,y)*f.W+pxOf(f,x,1);
+      if(f.mask[i]){zf=f.coef[i]*D;col=colAt(f,x,y,1);}
+    }
+    if(bv){
+      const i=pyOf(bv,y)*bv.W+pxOf(bv,x,-1);
+      if(bv.mask[i]){zb=-bv.coef[i]*D;if(!col)col=colAt(bv,x,y,-1);}
+    }
+    if(isNaN(zf)&&isNaN(zb))continue;
+    if(isNaN(zf))zf=-zb*0.82;
+    if(isNaN(zb))zb=-zf*0.82;
     nValid[ci]=1;
-    nZf[ci]=(colZ1[ci]+0.5)*step-WWz/2;
-    nZb[ci]=(colZ0[ci]+0.5)*step-WWz/2;
-    const x=(xi+0.5)*step-WWx/2,y=(yi+0.5)*step;
-    const col=colorAt(f,x,y,1)||FALLBACK;
+    nZf[ci]=zf;nZb[ci]=zb;
+    if(!col)col=FALLBACK;
     nCr[ci]=col[0];nCg[ci]=col[1];nCb[ci]=col[2];
-    nBone[ci]=BONE_IDX.get(nearestBone(x,y,(nZf[ci]+nZb[ci])/2))||0;
+    nBone[ci]=BONE_IDX.get(nearestBone(x,y,(zf+zb)/2))||0;
   }
   const chunks=new Map();
   const getChunk=bn=>{
