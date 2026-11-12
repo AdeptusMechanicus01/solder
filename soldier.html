@@ -86,15 +86,12 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
 .rebuild{width:100%;margin-top:9px;padding:8px;border:1px solid rgba(111,135,184,.5);border-radius:4px;background:rgba(111,135,184,.1);
   font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;color:var(--bone);transition:.15s}
 .rebuild:hover{background:rgba(111,135,184,.2);transform:translateY(-1px)}
-.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:9px}
-.slot{display:flex;flex-direction:column;gap:3px;padding:4px;border:1px dashed var(--line2);border-radius:4px;background:rgba(200,194,182,.03);transition:.15s;cursor:pointer}
-.slot canvas{width:100%;aspect-ratio:20/21;background:#0d0e11;border-radius:2px}
-.slot span{font-family:var(--mono);font-size:7.5px;letter-spacing:.1em;color:var(--dim);text-align:center}
-.slot:hover{border-color:rgba(192,122,62,.7);transform:translateY(-1px)}
-.slot.loaded{border:1px solid rgba(94,158,109,.85);background:rgba(94,158,109,.08)}
-.slot.loaded span{color:var(--bone)}
-.refbtns{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.refrow{display:flex;gap:10px;margin-top:9px}
+#refThumb{width:74px;height:148px;flex:none;border:1px solid var(--line2);border-radius:4px;background:#0d0e11}
+.refbtns{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
 .refbtns .rebuild{margin-top:0;padding:7px}
+.refname{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.refstats{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;color:var(--muted)}
 
 .exp{width:100%;display:flex;align-items:center;gap:10px;margin-top:8px;padding:10px 12px;border-radius:5px;border:1px solid var(--line);background:rgba(200,194,182,.04);transition:.15s;text-align:left;position:relative}
 .exp svg{width:18px;height:18px;flex:none;stroke:var(--bone);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -196,24 +193,24 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border-radius:3px;bac
     </div>
 
     <div class="sec">
-      <div class="sec-h"><i>02</i>РЕФЕРЕНСЫ · 4 ВИДА</div>
-      <div class="slots">
-        <button class="slot" data-view="front"><canvas width="120" height="126"></canvas><span>ФРОНТ</span></button>
-        <button class="slot" data-view="back"><canvas width="120" height="126"></canvas><span>ЗАД</span></button>
-        <button class="slot" data-view="left"><canvas width="120" height="126"></canvas><span>ЛЕВО</span></button>
-        <button class="slot" data-view="right"><canvas width="120" height="126"></canvas><span>ПРАВО</span></button>
+      <div class="sec-h"><i>02</i>РЕФЕРЕНС И СЕТКА</div>
+      <div class="refrow">
+        <canvas id="refThumb" width="148" height="296"></canvas>
+        <div class="refbtns">
+          <button class="rebuild" id="btnRefLoad">ЗАГРУЗИТЬ РЕФЕРЕНС</button>
+          <button class="rebuild" id="btnRefReset">ПРОЦЕДУРНЫЙ РЕФЕРЕНС</button>
+          <input type="file" id="fileRef" accept="image/*" hidden>
+          <div class="refname" id="refName">ВСТРОЕННЫЙ · ПРОЦЕДУРНЫЙ</div>
+          <div class="refstats" id="refStats">КОНТУРОВ: — · УЗЛОВ: —</div>
+        </div>
       </div>
-      <input type="file" id="fileRef" accept="image/*" hidden>
-      <div class="refbtns">
-        <button class="rebuild" id="btnDemo">ДЕМО · 4 ВИДА С КАРКАСА</button>
-        <button class="rebuild" id="btnBuild" disabled>ПОСТРОИТЬ 3D МОДЕЛЬ</button>
-      </div>
-      <div class="row"><span class="lbl">Выдавливание</span><input type="range" id="rngDepth" min="60" max="300" step="10" value="160"><span class="val" id="valDepth">160 мм</span></div>
       <div class="row"><span class="lbl">Ячейка</span><input type="range" id="rngCell" min="2" max="20" step="1" value="3"><span class="val" id="valCell">3 мм</span></div>
       <div class="row"><span class="lbl">Размер точки</span><input type="range" id="rngSize" min="50" max="200" step="5" value="110"><span class="val" id="valSize">110%</span></div>
       <div class="count">ТОЧЕК: <b id="pointCount">—</b> · СЕТКА <b id="cellNow">3 ММ</b></div>
-      <p class="note"><b>Конвейер:</b> 1) поле пустое → 2) загрузите референсы в 4 слота (фронт / лево / право / зад) → 3) пиксели → векторы → выдавливание по яркости (ярче = выступает, темнее = глубже) → 4) сращивание 4 видов в 3D-модель → 5) оживление (T-Pose / Idle / Walk / Run).</p>
+      <button class="rebuild" id="btnSequence">ПЕРЕСОБРАТЬ · 4 ПРОХОДА СКАНЕРА</button>
+      <p class="note"><b>Этап 1:</b> векторное сканирование референса — плотная сетка 2–3 мм, контуры деталей по градиентам яркости/цвета, Z-рельеф через distance transform, точный цвет и нормаль каждого узла.</p>
     </div>
+
     <div class="sec">
       <div class="sec-h"><i>03</i>ЭКСПОРТ</div>
       <button class="exp primary" id="btnGLB">
@@ -514,17 +511,22 @@ function buildCharacter(){
   scene.add(charRoot);
 }
 
-/* ---------- ЭТАПЫ 1-3 · 4 референса: пиксели → векторы → выдавливание по яркости ---------- */
-const REF_H=1.92,REF_PX_W=768,REF_PX_H=776,REF_DEMO_W=1.9;
-const VIEW_DEFS=[
-  {key:'front',label:'ФРОНТ',axis:'x',sign:+1},
-  {key:'back',label:'ЗАД',axis:'x',sign:-1},
-  {key:'left',label:'ЛЕВО',axis:'z',sign:-1},
-  {key:'right',label:'ПРАВО',axis:'z',sign:+1}
-];
-const views={};
-for(const d of VIEW_DEFS)views[d.key]={def:d,canvas:null,name:null,ready:false,W:0,H:0,WW:0,mask:null,lum:null,coef:null,data:null};
-let depthScale=0.16,slotPending=null;
+/* ---------- ЭТАП 1 · векторный 3D-сканер референса ---------- */
+const REF_H=1.92,REF_PROC_W=1.9,REF_PX_W=768,REF_PX_H=776;
+const REGION={HEAD:1,TORSO:2,CLOAK:3,ARM_L:4,ARM_R:5,LEG_L:6,LEG_R:7,FEET:8};
+const REGION_SCALE={1:0.115,2:0.145,3:0.175,4:0.065,5:0.065,6:0.095,7:0.095,8:0.075};
+const REGION_BONES={
+  1:['Head','Neck'],
+  2:['Chest','Spine'],
+  3:['Cloak','Chest','Spine'],
+  4:['ShoulderL','UpperArmL','ForeArmL','HandL','FingersL'],
+  5:['ShoulderR','UpperArmR','ForeArmR','HandR','FingersR'],
+  6:['ThighL','CalfL','FootL'],
+  7:['ThighR','CalfR','FootR'],
+  8:['FootL','FootR']
+};
+const REF={canvas:null,name:'ПРОЦЕДУРНЫЙ',W:0,H:0,worldW:REF_PROC_W,data:null,mask:null,edge:null,dist:null,depth:null,
+  nx:null,ny:null,nz:null,region:null,contours:[],detailContours:[],ready:false,metersPerPx:0};
 
 let LAMBERT=null;
 function ensureLambert(){
@@ -533,8 +535,8 @@ function ensureLambert(){
   for(const k in C)LAMBERT[k]=new THREE.MeshLambertMaterial({color:C[k]});
 }
 
-/* ортографический рендер скрытого каркаса с заданной стороны → canvas (демо-референсы) */
-function renderSideView(key){
+/* встроенный процедурный референс: фронтальный рендер скрытого каркаса в canvas */
+function renderProceduralReference(){
   ensureLambert();
   const W=REF_PX_W,H=REF_PX_H;
   const rt=new THREE.WebGLRenderTarget(W,H);
@@ -546,12 +548,8 @@ function renderSideView(key){
   const swaps=[];
   charRoot.traverse(o=>{if(o.isMesh&&o.userData.source){swaps.push([o,o.material,o.visible]);o.material=LAMBERT[o.userData.mkey]||o.material;o.visible=true;}});
   applyPose(ZERO);charRoot.updateMatrixWorld(true);
-  const cam=new THREE.OrthographicCamera(-REF_DEMO_W/2,REF_DEMO_W/2,REF_H/2,-REF_H/2,0.1,10);
-  if(key==='front')cam.position.set(0,REF_H/2,3.5);
-  else if(key==='back')cam.position.set(0,REF_H/2,-3.5);
-  else if(key==='left')cam.position.set(3.5,REF_H/2,0);
-  else cam.position.set(-3.5,REF_H/2,0);
-  cam.lookAt(0,REF_H/2,0);
+  const cam=new THREE.OrthographicCamera(-REF_PROC_W/2,REF_PROC_W/2,REF_H/2,-REF_H/2,0.1,10);
+  cam.position.set(0,REF_H/2,3);cam.lookAt(0,REF_H/2,0);
   renderer.setRenderTarget(rt);
   renderer.render(scene,cam);
   renderer.readRenderTargetPixels(rt,0,0,W,H,__REFBUF||( __REFBUF=new Uint8Array(W*H*4) ));
@@ -568,78 +566,43 @@ function renderSideView(key){
 }
 let __REFBUF=null;
 
-function drawSlot(key){
-  const btn=document.querySelector(`.slot[data-view="${key}"]`);
-  if(!btn)return;
-  const cv=btn.querySelector('canvas'),ctx=cv.getContext('2d');
-  ctx.fillStyle='#0d0e11';ctx.fillRect(0,0,cv.width,cv.height);
-  const v=views[key];
-  if(v.canvas)ctx.drawImage(v.canvas,0,0,v.W,v.H,0,0,cv.width,cv.height);
-  btn.classList.toggle('loaded',!!v.canvas);
+function setReferenceCanvas(cv,name){
+  REF.canvas=cv;REF.name=name;REF.ready=false;
+  REF.worldW=REF_H*cv.width/cv.height;
+  $('refName').textContent=name.slice(0,30).toUpperCase();
 }
-function anyViewReady(){return VIEW_DEFS.some(d=>views[d.key].ready);}
-function updateBuildBtn(){
-  const b=$('btnBuild');
-  if(b)b.disabled=!anyViewReady()||state.busy||state.building;
-}
-function loadSlotImage(key,file){
+
+function loadReferenceFile(file){
   if(state.busy||state.building)return;
   const url=URL.createObjectURL(file);
   const img=new Image();
-  img.onload=()=>{
+  img.onload=async()=>{
     URL.revokeObjectURL(url);
     const s=Math.min(REF_PX_W/img.width,REF_PX_H/img.height);
     const cv=document.createElement('canvas');
     cv.width=Math.max(2,Math.round(img.width*s));
     cv.height=Math.max(2,Math.round(img.height*s));
     cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-    const v=views[key];
-    v.canvas=cv;v.name=file.name;v.ready=false;
-    v.W=cv.width;v.H=cv.height;v.WW=REF_H*cv.width/cv.height;
-    drawSlot(key);updateBuildBtn();
-    toast(`РЕФЕРЕНС ${key.toUpperCase()} ЗАГРУЖЕН`);
+    setReferenceCanvas(cv,file.name);
+    await rebuildNow();
   };
   img.onerror=()=>{URL.revokeObjectURL(url);toast('НЕ УДАЛОСЬ ПРОЧИТАТЬ ИЗОБРАЖЕНИЕ','danger');};
   img.src=url;
 }
 
-/* демо-режим: 4 ортографических вида с скрытого каркаса — встроенные референсы по умолчанию */
-async function renderDemoViews(){
-  if(state.busy||state.building)return;
-  state.busy=true;updateBuildBtn();
-  $('build').classList.add('on');
-  $('buildLabel').textContent='ДЕМО · РЕНДЕР 4 ВИДОВ';
-  for(let i=0;i<VIEW_DEFS.length;i++){
-    const d=VIEW_DEFS[i];
-    $('buildSub').textContent=`${d.label} · ортографический рендер каркаса`;
-    $('buildBar').style.width=(i/VIEW_DEFS.length*100)+'%';$('buildPct').textContent=Math.round(i/VIEW_DEFS.length*100)+'%';
-    await raf();
-    const cv=renderSideView(d.key);
-    const v=views[d.key];
-    v.canvas=cv;v.name='ДЕМО · '+d.label;v.ready=false;
-    v.W=cv.width;v.H=cv.height;v.WW=REF_H*cv.width/cv.height;
-    drawSlot(d.key);
-  }
-  $('buildBar').style.width='100%';$('buildPct').textContent='100%';
-  $('buildSub').textContent='4 ВИДА ГОТОВЫ · НАЖМИТЕ ПОСТРОИТЬ 3D МОДЕЛЬ';
-  await wait(700);
-  $('build').classList.remove('on');
-  state.busy=false;updateBuildBtn();
-  toast('Демо-референсы готовы · загрузите свои 4 вида или стройте сразу');
-}
-
-/* анализ одного вида: маска → яркость → distance transform → коэффициент выдавливания */
-async function analyzeView(v,progress=()=>{}){
-  const cv=v.canvas;
+/* анализ референса: маска → градиенты → контуры → distance transform → рельеф → нормали */
+async function analyzeReference(progress=()=>{}){
+  const cv=REF.canvas;
   if(!cv)throw new Error('Референс не задан');
-  const W=v.W,H=v.H,N=W*H;
+  const W=cv.width,H=cv.height,N=W*H;
+  REF.W=W;REF.H=H;
   const ctx=cv.getContext('2d',{willReadFrequently:true});
   const img=ctx.getImageData(0,0,W,H);
-  const data=v.data=img.data;
+  const data=REF.data=img.data;
   await raf();progress(0.05);
 
-  /* маска силуэта: альфа-канал либо отсечение фона по медиане рамки */
-  const mask=v.mask=new Uint8Array(N);
+  /* 1 · маска силуэта: альфа-канал либо отсечение фона по медиане рамки */
+  const mask=REF.mask=new Uint8Array(N);
   let hasAlpha=false;
   for(let i=3;i<data.length;i+=4){if(data[i]<250){hasAlpha=true;break;}}
   if(hasAlpha){
@@ -664,20 +627,40 @@ async function analyzeView(v,progress=()=>{}){
     if(mask[i]&&!mask[i-1]&&!mask[i+1]&&!mask[i-W]&&!mask[i+W])closed[i]=0;
   }
   mask.set(closed);
-  await raf();progress(0.25);
+  await raf();progress(0.15);
 
-  /* яркость каждой точки-пикселя */
-  const lum=v.lum=new Float32Array(N);
-  let lMin=1e9,lMax=-1e9,lSum=0,lN=0;
-  for(let i=0;i<N;i++){
-    const o=i*4;lum[i]=0.2126*data[o]+0.7152*data[o+1]+0.0722*data[o+2];
-    if(mask[i]){lSum+=lum[i];lN++;if(lum[i]<lMin)lMin=lum[i];if(lum[i]>lMax)lMax=lum[i];}
+  /* 2 · градиенты яркости (Sobel) и цвета */
+  const lum=new Float32Array(N);
+  for(let i=0;i<N;i++){const o=i*4;lum[i]=0.2126*data[o]+0.7152*data[o+1]+0.0722*data[o+2];}
+  const edge=REF.edge=new Float32Array(N);
+  let maxE=1e-6;
+  for(let y=1;y<H-1;y++){
+    for(let x=1;x<W-1;x++){
+      const i=y*W+x;
+      const gx=lum[i-W+1]+2*lum[i+1]+lum[i+W+1]-lum[i-W-1]-2*lum[i-1]-lum[i+W-1];
+      const gy=lum[i+W-1]+2*lum[i+W]+lum[i+W+1]-lum[i-W-1]-2*lum[i-W]-lum[i-W+1];
+      const j=i+1,k2=i+W;
+      const cg=Math.max(
+        Math.abs(data[i*4]-data[j*4])+Math.abs(data[i*4+1]-data[j*4+1])+Math.abs(data[i*4+2]-data[j*4+2]),
+        Math.abs(data[i*4]-data[k2*4])+Math.abs(data[i*4+1]-data[k2*4+1])+Math.abs(data[i*4+2]-data[k2*4+2]));
+      const e=Math.sqrt(gx*gx+gy*gy)*0.25+cg;
+      edge[i]=e;if(e>maxE)maxE=e;
+    }
   }
-  const lAvg=lN?lSum/lN:128;
-  await raf();progress(0.4);
+  for(let i=0;i<N;i++)edge[i]/=maxE;
+  await raf();progress(0.3);
 
-  /* distance transform (chamfer 3-4) от границы силуэта */
-  const dist=new Float32Array(N);
+  /* 3 · порог контуров: перцентиль градиента внутри силуэта */
+  const hist=new Uint32Array(256);
+  let inMask=0;
+  for(let i=0;i<N;i++)if(mask[i]){hist[Math.min(255,(edge[i]*255)|0)]++;inMask++;}
+  const thrQ=Math.floor(inMask*0.86);
+  let acc=0,edgeThr=0.5;
+  for(let b=0;b<256;b++){acc+=hist[b];if(acc>=thrQ){edgeThr=b/255;break;}}
+  await raf();progress(0.38);
+
+  /* 4 · distance transform (chamfer 3-4) от границы силуэта */
+  const dist=REF.dist=new Float32Array(N);
   const INF=1e9;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const i=y*W+x;
@@ -704,22 +687,137 @@ async function analyzeView(v,progress=()=>{}){
     dist[i]=d;
   }
   for(let i=0;i<N;i++)dist[i]/=3;
+  REF.metersPerPx=REF_H/H;
+  await raf();progress(0.55);
+
+  /* 5 · Z-рельеф (коэффициент выпуклости) + нормали поверхности */
+  const tau=Math.max(4,W*0.035);
+  const depth0=new Float32Array(N);
+  for(let i=0;i<N;i++)depth0[i]=mask[i]?dist[i]/(dist[i]+tau):0;
+  const depth=REF.depth=new Float32Array(N);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    depth[i]=(depth0[i]*4+depth0[i-1]+depth0[i+1]+depth0[i-W]+depth0[i+W]
+      +depth0[i-W-1]+depth0[i-W+1]+depth0[i+W-1]+depth0[i+W+1])/12;
+  }
+  const nx=REF.nx=new Float32Array(N),ny=REF.ny=new Float32Array(N),nz=REF.nz=new Float32Array(N);
+  const k=0.14/REF.metersPerPx;
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    const dzx=(depth[i+1]-depth[i-1])*0.5*k,dzy=(depth[i+W]-depth[i-W])*0.5*k;
+    const l=Math.sqrt(dzx*dzx+dzy*dzy+1);
+    nx[i]=-dzx/l;ny[i]=-dzy/l;nz[i]=1/l;
+  }
   await raf();progress(0.7);
 
-  /* коэффициент выдавливания: ЯРКОСТЬ ДОМИНИРУЕТ — ярче = выступает, темнее = глубже;
-     расстояние от края силуэта — базовая выпуклость */
-  const tau=Math.max(4,W*0.035);
-  const span=Math.max(1,lMax-lMin);
-  const coef=v.coef=new Float32Array(N);
-  for(let i=0;i<N;i++){
-    if(!mask[i]){coef[i]=0;continue;}
-    const dn=dist[i]/(dist[i]+tau);
-    const ln=clamp((lum[i]-lAvg)/span+0.5,0,1);
-    coef[i]=clamp(0.3*dn+0.7*ln,0.04,1);
+  /* 6 · векторные контуры: силуэт (Moore) + детали по градиенту */
+  const CDX=[1,1,0,-1,-1,-1,0,1],CDY=[0,1,1,1,0,-1,-1,-1];
+  function trace(sx,sy,bin){
+    const line=[sx,sy];
+    let x=sx,y=sy,b=4;
+    const guard=4*(W+H)+64;
+    for(let s=0;s<guard;s++){
+      let found=-1;
+      for(let kk=1;kk<=8;kk++){
+        const nd=(b+kk)%8,tx=x+CDX[nd],ty=y+CDY[nd];
+        if(tx<0||ty<0||tx>=W||ty>=H)continue;
+        if(bin[ty*W+tx]){found=nd;break;}
+      }
+      if(found<0)break;
+      x+=CDX[found];y+=CDY[found];
+      b=(found+4)%8;
+      line.push(x,y);
+      if(x===sx&&y===sy)break;
+    }
+    return line;
   }
-  v.ready=true;
+  function extract(bin,maxLines){
+    const lines=[];
+    for(let i=0;i<N;i++){
+      if(!bin[i])continue;
+      const x=i%W,y=(i/W)|0;
+      if(y>0&&bin[i-W])continue;
+      if(x>0&&bin[i-1])continue;
+      const line=trace(x,y,bin);
+      if(line.length>=12)lines.push(line);
+      if(lines.length>=maxLines)break;
+    }
+    return lines;
+  }
+  const bbin=new Uint8Array(N);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    if(mask[i]&&(!mask[i-1]||!mask[i+1]||!mask[i-W]||!mask[i+W]))bbin[i]=1;
+  }
+  REF.contours=extract(bbin,64);
+  const ebin=new Uint8Array(N);
+  for(let i=0;i<N;i++)ebin[i]=(mask[i]&&edge[i]>edgeThr)?1:0;
+  REF.detailContours=extract(ebin,240);
+  await raf();progress(0.85);
+
+  /* 7 · карта регионов деталей: капюшон/голова, торс, плащ, руки, ноги (2D-пробы костей) */
+  const region=REF.region=new Uint8Array(N);
+  const probes=[
+    [REGION.HEAD,0,1.46,0,1.76],
+    [REGION.TORSO,0,0.95,0,1.40],
+    [REGION.ARM_L,0.10,1.41,0.86,1.43],[REGION.ARM_R,-0.10,1.41,-0.86,1.43],
+    [REGION.LEG_L,0.10,0.94,0.10,0.10],[REGION.LEG_R,-0.10,0.94,-0.10,0.10],
+    [REGION.FEET,0.10,0.12,0.13,0.02],[REGION.FEET,-0.10,0.12,-0.13,0.02]
+  ];
+  const probeDist=(wx,wy,p)=>{
+    const dx=p[3]-p[1],dy=p[4]-p[2];
+    const t=clamp(((wx-p[1])*dx+(wy-p[2])*dy)/(dx*dx+dy*dy||1e-9),0,1);
+    const qx=p[1]+dx*t-wx,qy=p[2]+dy*t-wy;
+    return Math.sqrt(qx*qx+qy*qy);
+  };
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const i=y*W+x;if(!mask[i])continue;
+    const wx=(x/(W-1)-0.5)*REF.worldW,wy=(1-y/(H-1))*REF_H,ax=Math.abs(wx);
+    let r;
+    if(wy<0.92&&ax<0.05)r=REGION.CLOAK;
+    else{
+      let best=-1,bd=1e9;
+      for(let p2=0;p2<probes.length;p2++){
+        const q=probeDist(wx,wy,probes[p2]);
+        if(q<bd){bd=q;best=p2;}
+      }
+      r=probes[best][0];
+      if(r===REGION.TORSO)r=(dist[i]<tau*0.55||(wy<1.02&&ax>0.17))?REGION.CLOAK:REGION.TORSO;
+    }
+    region[i]=r;
+  }
+  REF.ready=true;
   progress(1);
 }
+
+/* миниатюра референса с векторными контурами */
+function drawRefThumb(){
+  const t=$('refThumb');
+  if(!t||!REF.canvas)return;
+  const tw=t.width,th=t.height;
+  const ctx=t.getContext('2d');
+  ctx.fillStyle='#0d0e11';ctx.fillRect(0,0,tw,th);
+  if(!REF.W)return;
+  ctx.drawImage(REF.canvas,0,0,REF.W,REF.H,0,0,tw,th);
+  const sx=tw/REF.W,sy=th/REF.H;
+  ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(224,154,85,.85)';
+  ctx.beginPath();
+  for(const c of REF.contours){
+    ctx.moveTo(c[0]*sx,c[1]*sy);
+    for(let i=2;i<c.length;i+=2)ctx.lineTo(c[i]*sx,c[i+1]*sy);
+  }
+  ctx.stroke();
+  ctx.strokeStyle='rgba(111,135,184,.7)';
+  ctx.beginPath();
+  for(const c of REF.detailContours){
+    ctx.moveTo(c[0]*sx,c[1]*sy);
+    for(let i=2;i<c.length;i+=2)ctx.lineTo(c[i]*sx,c[i+1]*sy);
+  }
+  ctx.stroke();
+  $('refStats').textContent=`КОНТУРОВ: ${REF.contours.length+REF.detailContours.length} · ${(REF.metersPerPx*1000).toFixed(1)} ММ/ПХ`;
+}
+
 /* ---------- облака точек + плавная замена проходов ---------- */
 let cloud=null,fade=null,cellStep=0.003,sizeMult=1.10;
 /* ---------- этап 2 · шейдерное слияние: сплэты → монолитная поверхность ---------- */
@@ -857,161 +955,108 @@ function updateCount(){
   $('pointCount').textContent=n.toLocaleString('ru-RU');
   $('telPts').textContent=n.toLocaleString('ru-RU');
 }
-/* ---------- ЭТАП 4 · сращивание 4 видов в 3D: воксельное выдавливание → точки → плоскости ---------- */
+/* плотная векторная сетка узлов → точки + треугольные плоскости (3 точки = плоскость) */
 async function buildCloud(step,onProg){
   const prog=onProg||(()=>{});
-  const act=VIEW_DEFS.filter(d=>views[d.key].ready||views[d.key].canvas);
-  if(!act.length)throw new Error('Нет референсов');
-  /* анализ ещё не разобранных видов (пиксели → векторы → выдавливание по яркости) */
-  let done=0;
-  for(const d of VIEW_DEFS){
-    const v=views[d.key];
-    if(!v.canvas)continue;
-    if(!v.ready)await analyzeView(v,p=>prog(0.02+(done+p)/act.length*0.18,`АНАЛИЗ ${d.label}…`));
-    done++;
+  if(!REF.ready){
+    prog(0.02,'АНАЛИЗ РЕФЕРЕНСА…');
+    await analyzeReference(p=>prog(0.02+p*0.2,'АНАЛИЗ РЕФЕРЕНСА…'));
   }
-  prog(0.2,'ВЕКТОРНОЕ ВЫДАВЛИВАНИЕ…');
+  prog(0.25,'ВЕКТОРНЫЕ УЗЛЫ…');
   applyPose(ZERO);charRoot.updateMatrixWorld(true);
-  const D=depthScale;
-  const f=views.front.canvas?views.front:null,b=views.back.canvas?views.back:null,
-        l=views.left.canvas?views.left:null,r=views.right.canvas?views.right:null;
-  const WWx=Math.max(f?f.WW:0,b?b.WW:0)||2*D+0.2;
-  const WWz=Math.max(l?l.WW:0,r?r.WW:0)||WWx;
-  const WW=WWx;
-  const colsX=Math.max(2,Math.round(WWx/step)),colsY=Math.max(2,Math.round(REF_H/step)),colsZ=Math.max(2,Math.round(WWz/step));
-  const NV=colsX*colsY*colsZ;
-  const occ=new Uint8Array((NV+7)>>3);
-  const setBit=i=>{occ[i>>3]|=1<<(i&7);};
-  const getBit=i=>(occ[i>>3]>>(i&7))&1;
-  const bIdx=(xi,yi,zi)=>(xi*colsY+yi)*colsZ+zi;
-  const colZ0=new Int16Array(colsX*colsY).fill(-1);
-  const colZ1=new Int16Array(colsX*colsY).fill(-1);
-  const pxOf=(v2,u,sign)=>clamp(Math.round((0.5+sign*u/v2.WW)*(v2.W-1)),0,v2.W-1);
-  const pyOf=(v2,y)=>clamp(Math.round((1-y/REF_H)*(v2.H-1)),0,v2.H-1);
-  /* фаза 1 · воксельное выдавливание: фронт/зад режут по z (яркость = глубина выступа),
-     лево/право подрезают по x */
-  for(let xi=0;xi<colsX;xi++){
-    const x=(xi+0.5)*step-WWx/2;
-    for(let yi=0;yi<colsY;yi++){
-      const y=(yi+0.5)*step;
-      const ci=yi*colsX+xi;
-      let hi=D,lo=-D;
-      if(f){
-        const i=pyOf(f,y)*f.W+pxOf(f,x,1);
-        if(!f.mask[i])continue;
-        hi=Math.min(hi,f.coef[i]*D);
-      }
-      if(b){
-        const i=pyOf(b,y)*b.W+pxOf(b,x,-1);
-        if(!b.mask[i])continue;
-        lo=Math.max(lo,-b.coef[i]*D);
-      }
-      if(f&&!b)lo=-hi*0.82;
-      else if(b&&!f)hi=-lo*0.82;
-      let zi0=Math.max(0,Math.ceil((lo+WWz/2)/step-0.5));
-      let zi1=Math.min(colsZ-1,Math.floor((hi+WWz/2)/step-0.5));
-      if(zi1<zi0)zi0=zi1=clamp(Math.round(((lo+hi)/2+WWz/2)/step-0.5),0,colsZ-1);
-      for(let zi=zi0;zi<=zi1;zi++){
-        const z=(zi+0.5)*step-WWz/2;
-        if(l){
-          const i=pyOf(l,y)*l.W+pxOf(l,z,-1);
-          if(l.mask[i]&&x>l.coef[i]*D+step)continue;
-        }
-        if(r){
-          const i=pyOf(r,y)*r.W+pxOf(r,z,1);
-          if(r.mask[i]&&x<-r.coef[i]*D-step)continue;
-        }
-        setBit(bIdx(xi,yi,zi));
-        if(colZ0[ci]<0||zi<colZ0[ci])colZ0[ci]=zi;
-        if(zi>colZ1[ci])colZ1[ci]=zi;
-      }
-    }
-    if((xi&7)===0){
-      prog(0.2+0.3*xi/colsX,`ВЫДАВЛИВАНИЕ · ${Math.round(xi/colsX*100)}%`);
-      await raf();
-    }
-  }
-  /* привязка к костям: ближайший 3D-сегмент (ZERO-поза) */
+  const W=REF.W,H=REF.H,data=REF.data,mask=REF.mask,depth=REF.depth,
+        edge=REF.edge,dist=REF.dist,region=REF.region,
+        nx=REF.nx,ny=REF.ny,nz=REF.nz;
+  const WW=REF.worldW;
+  const colsX=Math.round(WW/step),colsY=Math.round(REF_H/step);
+  const NV=colsX*colsY;
+  const nValid=new Uint8Array(NV),nCore=new Uint8Array(NV),nBone=new Uint8Array(NV);
+  const nZf=new Float32Array(NV),nZb=new Float32Array(NV);
+  const nCr=new Float32Array(NV),nCg=new Float32Array(NV),nCb=new Float32Array(NV);
+  const nNx=new Float32Array(NV),nNy=new Float32Array(NV),nNz=new Float32Array(NV);
   const segByName={};
   for(const[n,p]of RIG_DEF){
     if(!p)continue;
     const a=rig[n].node.getWorldPosition(new THREE.Vector3());
-    const b2=rig[p].node.getWorldPosition(new THREE.Vector3());
-    segByName[n]={ax:a.x,ay:a.y,az:a.z,bx:b2.x,by:b2.y,bz:b2.z};
+    const b=rig[p].node.getWorldPosition(new THREE.Vector3());
+    segByName[n]={ax:a.x,ay:a.y,az:a.z,bx:b.x,by:b.y,bz:b.z};
   }
   const boneNames=POSE_NODES.slice();
   const BONE_IDX=new Map();boneNames.forEach((n,k)=>BONE_IDX.set(n,k));
   const locals=new Map();
   for(const name of POSE_NODES)locals.set(name,new THREE.Matrix4().copy(rig[name].node.matrixWorld).invert());
   const light=new THREE.Vector3(0.42,0.35,0.84).normalize();
-  const nearestBone=(x,y,z)=>{
-    let best='Chest',bd=1e9;
-    for(const bn in segByName){
-      const s=segByName[bn];
-      const dx=s.bx-s.ax,dy=s.by-s.ay,dz=s.bz-s.az;
-      const t=clamp(((x-s.ax)*dx+(y-s.ay)*dy+(z-s.az)*dz)/(dx*dx+dy*dy+dz*dz||1),0,1);
-      const qx=s.ax+dx*t-x,qy=s.ay+dy*t-y,qz=s.az+dz*t-z;
-      const q=qx*qx+qy*qy+qz*qz;
-      if(q<bd){bd=q;best=bn;}
+  const tau=Math.max(4,W*0.035);
+  /* фаза 1 · векторные узлы сетки: цвет, Z-рельеф, нормаль, кость */
+  for(let gy=0;gy<colsY;gy++){
+    const wy=(gy+0.5)*step;
+    const py=Math.round((1-wy/REF_H)*(H-1));
+    if(py<1||py>=H-1)continue;
+    for(let gx=0;gx<colsX;gx++){
+      const wx=(gx+0.5)*step-WW/2;
+      const px=Math.round((wx/WW+0.5)*(W-1));
+      const i=py*W+px;
+      if(!mask[i])continue;
+      const ni=gy*colsX+gx;
+      const reg=region[i]||REGION.TORSO;
+      const d=depth[i],ex=edge[i];
+      const sc=REGION_SCALE[reg]||0.13;
+      const zf=d*sc+ex*0.012*(reg===REGION.CLOAK?1.5:1);
+      let cands=REGION_BONES[reg]||['Chest'];
+      if(reg===REGION.FEET)cands=wx>0?REGION_BONES[REGION.LEG_L]:REGION_BONES[REGION.LEG_R];
+      let best='Chest',bd=1e9;
+      for(const bn of cands){
+        const sgm=segByName[bn];if(!sgm)continue;
+        const dx=sgm.bx-sgm.ax,dy=sgm.by-sgm.ay,dz=sgm.bz-sgm.az;
+        const t=clamp(((wx-sgm.ax)*dx+(wy-sgm.ay)*dy+(zf-sgm.az)*dz)/(dx*dx+dy*dy+dz*dz||1),0,1);
+        const qx=sgm.ax+dx*t-wx,qy=sgm.ay+dy*t-wy,qz=sgm.az+dz*t-zf;
+        const q=qx*qx+qy*qy+qz*qz;
+        if(q<bd){bd=q;best=bn;}
+      }
+      const o=i*4;
+      const nX=nx[i],nY=ny[i],nZ=nz[i]||1;
+      const ndl=Math.max(0,nX*light.x+nY*light.y+nZ*light.z);
+      const shade=0.42+0.58*ndl;
+      nValid[ni]=1;
+      nZf[ni]=zf;
+      nZb[ni]=-(d*sc*0.82+zf*0.5);
+      nCr[ni]=Math.pow(data[o]/255,2.2)*shade;
+      nCg[ni]=Math.pow(data[o+1]/255,2.2)*shade;
+      nCb[ni]=Math.pow(data[o+2]/255,2.2)*shade;
+      nNx[ni]=nX;nNy[ni]=nY;nNz[ni]=nZ;
+      nBone[ni]=BONE_IDX.has(best)?BONE_IDX.get(best):BONE_IDX.get('Chest');
+      nCore[ni]=dist[i]>tau*1.6?1:0;
     }
-    return best;
-  };
-  const colorAt=(v2,u,y,sign)=>{
-    if(!v2)return null;
-    const i=pyOf(v2,y)*v2.W+pxOf(v2,u,sign);
-    if(!v2.mask[i])return null;
-    const o=i*4;
-    return[Math.pow(v2.data[o]/255,2.2),Math.pow(v2.data[o+1]/255,2.2),Math.pow(v2.data[o+2]/255,2.2)];
-  };
-  /* фаза 2 · поверхность: воксели с пустым соседом → точки (нормаль = сумма пустых направлений) */
-  prog(0.5,'ПОВЕРХНОСТЬ · ТОЧКИ…');
+    if((gy&15)===0){
+      prog(0.25+0.35*gy/colsY,`ВЕКТОРНЫЕ УЗЛЫ · ${Math.round(gy/colsY*100)}%`);
+      await raf();
+    }
+  }
+  /* фаза 2 · облако точек из узлов */
+  prog(0.6,'ОБЛАКО ТОЧЕК…');
   const byBone=new Map();
   const getBuf=k=>{let o2=byBone.get(k);if(!o2){o2={p:[],c:[],n:[]};byBone.set(k,o2);}return o2;};
-  const CD=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-  const FALLBACK=[0.28,0.27,0.25];
   const rng=mulberry32(47);
   let total=0;
-  for(let xi=0;xi<colsX;xi++){
-    const x=(xi+0.5)*step-WWx/2;
-    for(let yi=0;yi<colsY;yi++){
-      const ci=yi*colsX+xi;
-      if(colZ1[ci]<0)continue;
-      const y=(yi+0.5)*step;
-      for(let zi=colZ0[ci];zi<=colZ1[ci];zi++){
-        if(!getBit(bIdx(xi,yi,zi)))continue;
-        let nx2=0,ny2=0,nz2=0,cr=0,cg=0,cb=0,cn=0;
-        for(let k=0;k<6;k++){
-          const dx=CD[k][0],dy=CD[k][1],dz=CD[k][2];
-          const tx=xi+dx,ty=yi+dy,tz=zi+dz;
-          const empty=tx<0||ty<0||tz<0||tx>=colsX||ty>=colsY||tz>=colsZ||!getBit(bIdx(tx,ty,tz));
-          if(!empty)continue;
-          nx2+=dx;ny2+=dy;nz2+=dz;
-          const z=(zi+0.5)*step-WWz/2;
-          let col=null;
-          if(dz===1)col=colorAt(f,x,y,1);
-          else if(dz===-1)col=colorAt(b,x,y,-1);
-          else if(dx===1)col=colorAt(l,z,y,-1);
-          else if(dx===-1)col=colorAt(r,z,y,1);
-          if(!col)col=colorAt(f,x,y,1);
-          if(!col)col=FALLBACK;
-          cr+=col[0];cg+=col[1];cb+=col[2];cn++;
-        }
-        if(!cn)continue;
-        const il=1/(Math.sqrt(nx2*nx2+ny2*ny2+nz2*nz2)||1);
-        const nX=nx2*il,nY=ny2*il,nZ=nz2*il;
-        const ndl=Math.max(0,nX*light.x+nY*light.y+nZ*light.z);
-        const shade=0.42+0.58*ndl;
-        const z=(zi+0.5)*step-WWz/2;
-        const buf=getBuf(BONE_IDX.get(nearestBone(x,y,z))||0);
-        buf.p.push(x+(rng()-0.5)*step*0.25,y+(rng()-0.5)*step*0.25,z+(rng()-0.5)*step*0.25);
-        buf.c.push(cr/cn*shade,cg/cn*shade,cb/cn*shade);
-        buf.n.push(nX,nY,nZ);
-        total++;
-      }
-    }
-    if((xi&7)===0){
-      prog(0.5+0.25*xi/colsX,`ПОВЕРХНОСТЬ · ${Math.round(xi/colsX*100)}%`);
-      await raf();
+  for(let gy=0;gy<colsY;gy++)for(let gx=0;gx<colsX;gx++){
+    const ni=gy*colsX+gx;
+    if(!nValid[ni])continue;
+    const x=(gx+0.5)*step-WW/2+(rng()-0.5)*step*0.3;
+    const y=(gy+0.5)*step+(rng()-0.5)*step*0.3;
+    const cr=nCr[ni],cg=nCg[ni],cb=nCb[ni];
+    const k2=nBone[ni],buf=getBuf(k2);
+    buf.p.push(x,y,nZf[ni]);
+    buf.c.push(cr,cg,cb);
+    buf.n.push(nNx[ni],nNy[ni],nNz[ni]);
+    buf.p.push(x,y,nZb[ni]);
+    buf.c.push(cr*0.55,cg*0.55,cb*0.55);
+    buf.n.push(-nNx[ni],-nNy[ni],-nNz[ni]);
+    total+=2;
+    if(nCore[ni]&&((gx+gy)&1)===0){
+      buf.p.push(x,y,0);
+      buf.c.push(cr*0.4,cg*0.4,cb*0.4);
+      buf.n.push(0,0,1);
+      total++;
     }
   }
   const mat=makeMaterial(step);setMatOpacity(mat,0);mat.depthWrite=false;
@@ -1033,22 +1078,8 @@ async function buildCloud(step,onProg){
     const pts=new THREE.Points(g,mat);pts.name=boneNames[k2]+'_scan';
     rig[boneNames[k2]].node.add(pts);points.push(pts);
   }
-  /* фаза 3 · треугольные плоскости из колонок: передняя/задняя оболочка + стены (3 точки = плоскость) */
-  prog(0.78,'ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ…');
-  const nValid=new Uint8Array(colsX*colsY),nBone=new Uint8Array(colsX*colsY);
-  const nZf=new Float32Array(colsX*colsY),nZb=new Float32Array(colsX*colsY);
-  const nCr=new Float32Array(colsX*colsY),nCg=new Float32Array(colsX*colsY),nCb=new Float32Array(colsX*colsY);
-  for(let yi=0;yi<colsY;yi++)for(let xi=0;xi<colsX;xi++){
-    const ci=yi*colsX+xi;
-    if(colZ1[ci]<0)continue;
-    nValid[ci]=1;
-    nZf[ci]=(colZ1[ci]+0.5)*step-WWz/2;
-    nZb[ci]=(colZ0[ci]+0.5)*step-WWz/2;
-    const x=(xi+0.5)*step-WWx/2,y=(yi+0.5)*step;
-    const col=colorAt(f,x,y,1)||FALLBACK;
-    nCr[ci]=col[0];nCg[ci]=col[1];nCb[ci]=col[2];
-    nBone[ci]=BONE_IDX.get(nearestBone(x,y,(nZf[ci]+nZb[ci])/2))||0;
-  }
+  /* фаза 3 · треугольные плоскости: соседние узлы → 3 точки = плоскость */
+  prog(0.72,'ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ…');
   const chunks=new Map();
   const getChunk=bn=>{
     let ch=chunks.get(bn);
@@ -1106,7 +1137,7 @@ async function buildCloud(step,onProg){
       }
     }
     if((gy&31)===0){
-      prog(0.78+0.14*gy/colsY,`ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ · ${Math.round(gy/colsY*100)}%`);
+      prog(0.72+0.2*gy/colsY,`ТРЕУГОЛЬНЫЕ ПЛОСКОСТИ · ${Math.round(gy/colsY*100)}%`);
       await raf();
     }
   }
@@ -1137,7 +1168,7 @@ async function buildCloud(step,onProg){
     wall(a,b);
   }
   /* сборка мешей по костям */
-  prog(0.96,'СБОРКА МЕША…');await raf();
+  prog(0.95,'СБОРКА МЕША…');await raf();
   const meshes=[],wires=[],meshMats=[],wireMats=[];
   for(const[bn,ch]of chunks){
     if(!ch.idx.length)continue;
@@ -1157,41 +1188,53 @@ async function buildCloud(step,onProg){
   prog(1,'ГОТОВО');
   return {points,meshes,wires,meshMats,wireMats,mat,count:total,cell:step};
 }
-/* ---------- ЭТАПЫ 4-5 · сборка 3D-модели из референсов + оживление ---------- */
-let state={mode:'idle',blend:1,paused:false,speed:1,poseTime:0,exporting:false,building:false,busy:false,renderMode:'mesh',wire:true};
+
+/* ---------- последовательная сборка по референсу ---------- */
+const PASSES=[
+  {cell:0.012,view:'front',label:'FRONT',desc:'грубый векторный каркас'},
+  {cell:0.006,view:'left',label:'LEFT SIDE',desc:'форма и силуэт'},
+  {cell:0.003,view:'back',label:'BACK',desc:'контуры, складки, рельеф'},
+  {cell:0.002,view:'right',label:'RIGHT SIDE',desc:'финальная плотность 2 мм'}
+];
+let seqToken=0,state={mode:'idle',blend:1,paused:false,speed:1,poseTime:0,exporting:false,building:false,busy:false,renderMode:'mesh',wire:true};
 function setControlsEnabled(on){
   document.querySelectorAll('.mode').forEach(b=>b.disabled=!on);
-  document.querySelectorAll('.slot').forEach(b=>b.disabled=!on);
-  ['rngSpeed','rngCell','rngSize','rngDepth','btnPlay','btnCam','btnGLB','btnOBJ','btnWire','btnDemo','btnBuild'].forEach(id=>$(id).disabled=!on);
-  if(on)updateBuildBtn();
+  ['rngSpeed','rngCell','rngSize','btnPlay','btnCam','btnSequence','btnGLB','btnOBJ','btnRefLoad','btnRefReset','btnWire'].forEach(id=>$(id).disabled=!on);
 }
 function tweenCamTo(v,dur=1.1){
   camTween={t:0,dur,fp:camera.position.clone(),tp:v.pos.clone(),ft:controls.target.clone(),tt:v.tgt.clone()};
 }
-async function buildNow(){
-  if(state.busy||state.building)return;
-  if(!anyViewReady()){toast('СНАЧАЛА ЗАГРУЗИТЕ РЕФЕРЕНСЫ · ФРОНТ / ЛЕВО / ПРАВО / ЗАД','danger');return;}
+async function runSequence(){
+  const token=++seqToken;
   state.building=true;setControlsEnabled(false);
-  $('build').classList.add('on');$('buildBar').style.width='0%';$('buildPct').textContent='0%';
-  $('buildLabel').textContent='СБОРКА 3D МОДЕЛИ';
-  $('buildSub').textContent=`${Math.round(cellStep*1000)} мм · выдавливание ${Math.round(depthScale*1000)} мм`;
-  try{
-    const c=await buildCloud(cellStep,(p,s)=>{
-      $('buildBar').style.width=Math.round(p*100)+'%';
-      $('buildPct').textContent=Math.round(p*100)+'%';
-      if(s)$('buildSub').textContent=s;
-    });
-    setCloud(c,0.5);
-    forceMode('idle');
-    tweenCamTo(CAM_HOME,1.2);
-    toast('Модель собрана · '+c.count.toLocaleString('ru-RU')+' точек · 4 вида сращены');
-  }catch(err){
-    console.error(err);
-    toast('ОШИБКА СБОРКИ: '+err.message,'danger');
+  forceMode('tpose');
+  $('build').classList.add('on');
+  for(let i=0;i<PASSES.length;i++){
+    if(token!==seqToken)return;
+    const p=PASSES[i];
+    $('buildLabel').textContent=`ПРОХОД ${i+1}/4 · ${p.label}`;
+    $('buildSub').textContent=`${Math.round(p.cell*1000)} мм · ${p.desc}`;
+    $('buildBar').style.width=(i/PASSES.length*100)+'%';$('buildPct').textContent=Math.round(i/PASSES.length*100)+'%';
+    tweenCamTo(VIEWS[p.view],1.15);
+    await wait(260);
+    const c=await buildCloud(p.cell);
+    if(token!==seqToken){disposeCloud(c);return;}
+    setCloud(c,0.95);
+    const pct=Math.round((i+1)/PASSES.length*100);
+    $('buildBar').style.width=pct+'%';$('buildPct').textContent=pct+'%';
+    await wait(1450);   // неспешная последовательность
   }
+  if(token!==seqToken)return;
+  finishFade();
+  cellStep=0.002;$('rngCell').value=2;$('valCell').textContent='2 мм';$('cellNow').textContent='2 ММ';paintRange($('rngCell'));
+  drawRefThumb();
   $('build').classList.remove('on');
   state.building=false;setControlsEnabled(true);
+  tweenCamTo(CAM_HOME,1.25);
+  forceMode('idle');
+  toast('Сборка завершена · '+cloud.count.toLocaleString('ru-RU')+' точек · векторная сетка 2 мм');
 }
+
 /* ---------- позы ---------- */
 const IDLE_T=4.0,WALK_T=1.3,RUN_T=0.7,FPS=30;
 function newPose(){const o={};for(const n of POSE_NODES)o[n]={rx:0,ry:0,rz:0,px:0,py:0,pz:0};return o;}
@@ -1332,6 +1375,22 @@ async function exportOBJ(){
   }catch(e){toast('Ошибка OBJ: '+e.message,'danger');}
   reattach(sources);setBusy(false);state.exporting=false;copyPose(ZERO,blendFrom);state.blend=0;
 }
+async function rebuildNow(){
+  if(state.busy||state.building)return;
+  state.busy=true;$('rngCell').disabled=true;
+  $('buildLabel').textContent='ВЕКТОРНОЕ СКАНИРОВАНИЕ';
+  $('buildSub').textContent=`${REF.name} · ячейка ${Math.round(cellStep*1000)} мм`;
+  $('build').classList.add('on');$('buildBar').style.width='0%';$('buildPct').textContent='0%';
+  const c=await buildCloud(cellStep,(p,s)=>{
+    $('buildBar').style.width=Math.round(p*100)+'%';
+    $('buildPct').textContent=Math.round(p*100)+'%';
+    $('buildSub').textContent=s;
+  });
+  setCloud(c,0.35);
+  drawRefThumb();
+  $('build').classList.remove('on');
+  state.busy=false;$('rngCell').disabled=false;
+}
 function bindUI(){
   document.querySelectorAll('.mode[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
   document.querySelectorAll('.rmode').forEach(b=>b.addEventListener('click',()=>setRenderMode(b.dataset.rmode)));
@@ -1343,31 +1402,26 @@ function bindUI(){
   });
   $('btnPlay').addEventListener('click',togglePause);
   $('btnCam').addEventListener('click',()=>tweenCamTo(CAM_HOME,0.9));
-  document.querySelectorAll('.slot').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      if(state.busy||state.building)return;
-      slotPending=btn.dataset.view;
-      $('fileRef').click();
-    });
-  });
+  $('btnSequence').addEventListener('click',runSequence);
+  $('btnRefLoad').addEventListener('click',()=>$('fileRef').click());
   $('fileRef').addEventListener('change',e=>{
     const f=e.target.files[0];
-    if(f&&slotPending)loadSlotImage(slotPending,f);
-    e.target.value='';slotPending=null;
+    if(f)loadReferenceFile(f);
+    e.target.value='';
   });
-  $('btnDemo').addEventListener('click',renderDemoViews);
-  $('btnBuild').addEventListener('click',buildNow);
+  $('btnRefReset').addEventListener('click',async()=>{
+    if(state.busy||state.building)return;
+    state.busy=true;
+    setReferenceCanvas(renderProceduralReference(),'ПРОЦЕДУРНЫЙ');
+    state.busy=false;
+    await rebuildNow();
+  });
   const speed=$('rngSpeed');paintRange(speed);
   speed.addEventListener('input',()=>{state.speed=+speed.value;$('valSpeed').textContent='×'+(+speed.value).toFixed(2);paintRange(speed);});
-  const cell=$('rngCell');paintRange(cell);
+  const cell=$('rngCell');paintRange(cell);let deb=null;
   cell.addEventListener('input',()=>{
-    cellStep=+cell.value/1000;
     $('valCell').textContent=cell.value+' мм';$('cellNow').textContent=cell.value+' ММ';paintRange(cell);
-  });
-  const dep=$('rngDepth');paintRange(dep);
-  dep.addEventListener('input',()=>{
-    depthScale=+dep.value/1000;
-    $('valDepth').textContent=dep.value+' мм';paintRange(dep);
+    clearTimeout(deb);deb=setTimeout(()=>{cellStep=+cell.value/1000;rebuildNow();},220);
   });
   const size=$('rngSize');paintRange(size);
   size.addEventListener('input',()=>{
@@ -1428,16 +1482,18 @@ async function init(){
   try{
     bootStep('СЦЕНА…',15);await raf();
     initThree();
-    bootStep('КАРКАС…',45);await raf();
+    bootStep('КАРКАС ПО РЕФЕРЕНСУ…',45);await raf();
     buildCharacter();
-    bootStep('ПУЛЬТ…',80);await raf();
+    bootStep('ВЕКТОРНЫЙ РЕФЕРЕНС…',60);await raf();
+    REF.canvas=renderProceduralReference();
+    bootStep('ПОДГОТОВКА ПРОХОДОВ…',80);await raf();
     bindUI();
     forceMode('tpose');
     renderer.compile(scene,camera);
     renderer.setAnimationLoop(loop);
     bootStep('ГОТОВО',100);await raf();
     $('boot').classList.add('gone');setTimeout(()=>$('boot').remove(),800);
-    toast('Поле пустое · загрузите 4 референса или нажмите ДЕМО');
+    runSequence();
   }catch(err){
     console.error(err);
     const s=$('bootStatus');s.textContent='ОШИБКА: '+err.message;s.classList.add('error');
