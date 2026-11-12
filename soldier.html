@@ -577,7 +577,7 @@ function drawSlot(key){
   if(v.canvas)ctx.drawImage(v.canvas,0,0,v.W,v.H,0,0,cv.width,cv.height);
   btn.classList.toggle('loaded',!!v.canvas);
 }
-function anyViewReady(){return VIEW_DEFS.some(d=>views[d.key].ready);}
+function anyViewReady(){return VIEW_DEFS.some(d=>!!views[d.key].canvas);}
 function updateBuildBtn(){
   const b=$('btnBuild');
   if(b)b.disabled=!anyViewReady()||state.busy||state.building;
