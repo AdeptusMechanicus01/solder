@@ -17,31 +17,4 @@ jobs:
           node-version: 20
 
       - name: Extract and check module scripts
-        run: |
-          set -e
-          shopt -s nullglob
-          files=($(find . -name '*.html' -not -path './.git/*'))
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No HTML files found"
-            exit 0
-          fi
-          status=0
-          for f in "${files[@]}"; do
-            echo "::group::$f"
-            python3 - "$f" <<'PY' || status=1
-import io,re,sys,pathlib
-p=pathlib.Path(sys.argv[1])
-s=p.read_text(encoding='utf-8')
-scripts=re.findall(r'<script type="module">(.*?)</script>',s,re.S)
-if not scripts:
-    print('no module scripts, skipping')
-    sys.exit(0)
-out=pathlib.Path('/tmp')/(p.name+'.mjs')
-out.write_text('\n'.join(scripts),encoding='utf-8')
-print(f'checking {len(scripts)} module script(s) -> {out}')
-sys.exit(0)
-PY
-            node --check "/tmp/$(basename "$f").mjs" || status=1
-            echo "::endgroup::"
-          done
-          exit $status
+        run: python3 .github/scripts/check_modules.py
